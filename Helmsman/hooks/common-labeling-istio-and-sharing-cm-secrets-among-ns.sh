@@ -2,10 +2,11 @@
 # Centralized Post-Install Setup Script for MOSIP Deployment
 
 # Namespaces
+SMTP_NS="${SMTP_NAMESPACE:-${1:-mock-smtp}}"
 declare -A NAMESPACES=(
     [KEYMGR]="keymanager"
     [WEBSUB]="websub"
-    [SMTP]="mock-smtp"
+    [SMTP]="${SMTP_NS}"
     [KERNEL]="kernel"
     [MDL]="masterdata-loader"
     [BIOSDK]="biosdk"
