@@ -1,10 +1,10 @@
 gateway:
   internal:
     enabled: true
-    host: api-internal.sandbox.xyz.net
+    host: api-internal.dev0.mosip.net
   public:
     enabled: true
-    host: api.sandbox.xyz.net
+    host: api.dev0.mosip.net
 proxyProtocol:
   enabled: true
 authPolicy:
