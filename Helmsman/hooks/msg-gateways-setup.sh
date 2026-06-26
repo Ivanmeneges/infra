@@ -2,11 +2,12 @@
 # Creates configmap and secrets for SMTP and SMS
 
 NS=msg-gateways
+SMTP_NS="${1:-mock-smtp}"
 
 function msg_gateway() {
 
-  SMTP_HOST=mock-smtp.mock-smtp
-  SMS_HOST=mock-smtp.mock-smtp
+  SMTP_HOST=mock-smtp.${SMTP_NS}
+  SMS_HOST=mock-smtp.${SMTP_NS}
   SMTP_PORT=8025
   SMS_PORT=8080
   SMTP_USER=
