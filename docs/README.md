@@ -37,6 +37,11 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
  - Backup before destruction
  - Complete cleanup verification
 
+6. **[DMP Internship Backup Guide](DMP_INTERNSHIP_BACKUP_GUIDE.md)** - qajava21 Postgres/MinIO backup
+ - Database dumps, MinIO buckets, UIN/VID/Handle traces
+ - Collab schema-only dump for self-registration
+ - MinIO restore commands and process
+
 ### For Experienced Users
 
 **Jump directly to what you need:**
@@ -60,6 +65,7 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 | **[Workflow Guide](WORKFLOW_GUIDE.md)** | Visual GitHub Actions workflow navigation | Everyone during deployment |
 | **[DSF Configuration Guide](DSF_CONFIGURATION_GUIDE.md)** | Helmsman configuration file explained in detail | Everyone before Helmsman deployment |
 | **[Environment Destruction Guide](ENVIRONMENT_DESTRUCTION_GUIDE.md)** | Safe resource cleanup and cost management | Everyone when decommissioning |
+| **[DMP Internship Backup Guide](DMP_INTERNSHIP_BACKUP_GUIDE.md)** | qajava21 Postgres/MinIO backup and MinIO restore | DMP internship / data hand-off |
 
 ### Component-Specific Documentation
 

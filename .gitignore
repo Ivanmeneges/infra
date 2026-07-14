@@ -66,6 +66,12 @@ private_key.*
 .env.*
 !.env.example
 
+# DMP internship backup local outputs / secrets
+scripts/dmp-backup/config.env
+scripts/dmp-backup/backups/
+scripts/dmp-backup/**/*.dump
+scripts/dmp-backup/**/*.sql.gz
+
 # Backup files
 *.backup
 *.bak
