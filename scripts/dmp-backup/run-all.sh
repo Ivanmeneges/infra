@@ -15,7 +15,8 @@
 #   ./run-all.sh minio
 #   ./run-all.sh schema
 #   ./run-all.sh traces
-#   ./run-all.sh postgres minio traces
+#   ./run-all.sh rids
+#   ./run-all.sh postgres minio traces rids
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +27,7 @@ load_config
 
 TARGETS=("$@")
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-  TARGETS=(postgres schema traces minio)
+  TARGETS=(postgres schema traces rids minio)
 fi
 
 log "DMP internship backup starting"
@@ -46,8 +47,9 @@ for t in "${TARGETS[@]}"; do
     postgres) run_one postgres "$SCRIPT_DIR/backup-postgres.sh" ;;
     schema)   run_one schema   "$SCRIPT_DIR/backup-self-registration-schema.sh" ;;
     traces)   run_one traces   "$SCRIPT_DIR/export-uin-vid-handle.sh" ;;
+    rids)     run_one rids     "$SCRIPT_DIR/export-rids-uin-vid.sh" ;;
     minio)    run_one minio    "$SCRIPT_DIR/backup-minio.sh" ;;
-    *) die "Unknown target: $t (use postgres|schema|traces|minio)" ;;
+    *) die "Unknown target: $t (use postgres|schema|traces|rids|minio)" ;;
   esac
 done
 
@@ -71,6 +73,7 @@ cat >"$BACKUP_DIR/SUMMARY.md" <<EOF
 | postgres/qajava21/ | Full dumps: mosip_regprc, mosip_credential, mosip_idmap, mosip_idrepo, mosip_ida, mosip_resident |
 | postgres/collab/ | Schema-only CREATE script for inji_certify_tan.self_registration (no data) |
 | traces/ | UIN / VID / Handle CSV + query output |
+| traces/rids-13july/ | Targeted traces for RIDs_13July.xlsx (RID/UIN/VID correlation) |
 | minio/ | Selected buckets (prefer last ${MINIO_NEWER_THAN} objects) |
 
 ## MinIO restore
