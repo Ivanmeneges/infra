@@ -81,6 +81,7 @@ We've created comprehensive beginner-friendly guides to help you succeed:
 | **[Workflow Guide](docs/WORKFLOW_GUIDE.md)**                               | Visual walkthrough of GitHub Actions workflows with screenshots and navigation help        | During deployment - run workflows correctly         |
 | **[DSF Configuration Guide](docs/DSF_CONFIGURATION_GUIDE.md)**             | How to configure Helmsman files including clusterid and domain settings                    | Before Helmsman deployment - configure applications |
 | **[Environment Destruction Guide](docs/ENVIRONMENT_DESTRUCTION_GUIDE.md)** | Safe teardown procedures, backup steps, and cost monitoring                                | After deployment - clean up resources               |
+| **[DMP Internship Backup Guide](docs/DMP_INTERNSHIP_BACKUP_GUIDE.md)** | qajava21 Postgres/MinIO backup, UIN/VID/Handle traces, MinIO restore                       | DMP internship data hand-off                        |
 
 **Complete Documentation Index:** [View All Documentation](docs/README.md)
 
