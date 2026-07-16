@@ -90,35 +90,22 @@ on:
         type: boolean
         default: true
       GRANT_RANCHER_ACCESS:
-        description: 'Grant Rancher cluster access (DEVOPS cluster-owner by default + optional teams from JSON)'
+        description: 'Grant Rancher cluster access (DEVOPS is always cluster-owner by default for every env)'
         required: false
         type: boolean
         default: true
-      RANCHER_GRANT_DEVOPS:
-        description: 'Grant DEVOPS group access on this run (default cluster-owner)'
+      GRANT_GROUP_ACCESS:
+        description: 'Also grant other teams from rancher-access-grants.json (roles/enabled flags per JSON + env vars). DEVOPS cluster-owner is always applied regardless.'
         required: false
         type: boolean
-        default: true
-      RANCHER_DEVOPS_GROUP:
-        description: 'DEVOPS group name in Rancher/Keycloak (default DEVOPS)'
+        default: false
+      RANCHER_CLUSTER_OWNER_GROUP_ENABLED:
+        description: 'Grant an additional group cluster-owner access (DEVOPS stays cluster-owner too)'
         required: false
-        type: string
-        default: 'DEVOPS'
-      RANCHER_DEVOPS_ROLE:
-        description: 'Rancher role for DEVOPS group on this run'
-        required: false
-        type: choice
-        options:
-          - cluster-owner
-          - cluster-member
-        default: cluster-owner
-      RANCHER_GRANT_GROUPS:
-        description: 'Comma-separated teams to grant from rancher-access-grants.json (e.g. QA,DEVELOPERS,SECURITY). Role comes from JSON unless cluster-owner override below.'
-        required: false
-        type: string
-        default: ''
-      RANCHER_CLUSTER_OWNER_GROUPS:
-        description: 'Comma-separated groups to grant cluster-owner on this run (e.g. QA or DEVOPS,QA). DEVOPS default owner is also controlled by RANCHER_DEVOPS_ROLE above.'
+        type: boolean
+        default: false
+      RANCHER_CLUSTER_OWNER_GROUP:
+        description: 'Group name for cluster-owner override (e.g. QA). Used when option above is enabled; overrides JSON role for that group.'
         required: false
         type: string
         default: ''
@@ -445,11 +432,10 @@ jobs:
           RANCHER_DEVOPS_ENABLED: ${{ vars.RANCHER_DEVOPS_ENABLED }}
           RANCHER_DEVOPS_GROUP: ${{ vars.RANCHER_DEVOPS_GROUP }}
           RANCHER_GROUP_AUTH_PREFIX: ${{ vars.RANCHER_GROUP_AUTH_PREFIX }}
-          WORKFLOW_DEVOPS_GROUP: ${{ inputs.RANCHER_DEVOPS_GROUP || vars.RANCHER_DEVOPS_GROUP || 'DEVOPS' }}
-          WORKFLOW_DEVOPS_ROLE: ${{ inputs.RANCHER_DEVOPS_ROLE }}
-          WORKFLOW_GRANT_DEVOPS: ${{ inputs.RANCHER_GRANT_DEVOPS }}
-          WORKFLOW_GRANT_GROUPS: ${{ inputs.RANCHER_GRANT_GROUPS }}
-          WORKFLOW_CLUSTER_OWNER_GROUPS: ${{ inputs.RANCHER_CLUSTER_OWNER_GROUPS }}
+          WORKFLOW_DEVOPS_GROUP: ${{ vars.RANCHER_DEVOPS_GROUP || 'DEVOPS' }}
+          WORKFLOW_GRANT_GROUP_ACCESS: ${{ inputs.GRANT_GROUP_ACCESS }}
+          WORKFLOW_CLUSTER_OWNER_GROUP_ENABLED: ${{ inputs.RANCHER_CLUSTER_OWNER_GROUP_ENABLED }}
+          WORKFLOW_CLUSTER_OWNER_GROUP: ${{ inputs.RANCHER_CLUSTER_OWNER_GROUP }}
         run: |
           if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
             echo "ERROR: RANCHER_API_URL and RANCHER_API_TOKEN must be set for environment '$REF_NAME'"

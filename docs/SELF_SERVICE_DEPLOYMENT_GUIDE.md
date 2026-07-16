@@ -336,13 +336,11 @@ Optional environment variable:
 | `ENABLE_RANCHER_IMPORT` | ✅ **true** |
 | `PUBLISH_KUBECONFIG` | ✅ **true** (default) |
 | `GRANT_RANCHER_ACCESS` | ✅ **true** (default) |
-| `RANCHER_GRANT_DEVOPS` | ✅ **true** (DEVOPS cluster-owner by default) |
-| `RANCHER_GRANT_GROUPS` | e.g. `QA` or `QA,DEVELOPERS` — teams from JSON catalog |
-| `RANCHER_CLUSTER_OWNER_GROUPS` | e.g. `QA` — grant cluster-owner to named groups |
+| `GRANT_GROUP_ACCESS` | ☐ false — check to apply other teams from JSON |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false — check to grant cluster-owner to a named group |
+| `RANCHER_CLUSTER_OWNER_GROUP` | e.g. `QA` |
 
-**Defaults:** DEVOPS is always **cluster-owner** unless you change `RANCHER_DEVOPS_ROLE` or add another group to `RANCHER_CLUSTER_OWNER_GROUPS`. Other teams use roles from `.github/config/rancher-access-grants.json` unless you override owner access by group name.
-
-Per-environment defaults can still be set with `vars.RANCHER_ACCESS_GRANTS`. Workflow UI selections override those for that run.
+**Defaults:** DEVOPS is always **cluster-owner** (from JSON, not in the UI). Check `GRANT_GROUP_ACCESS` to apply QA/DEVELOPERS/etc. per `rancher-access-grants.json` and env `RANCHER_ACCESS_GRANTS`. To make another group owner too (e.g. QA), enable `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` and enter the group name — DEVOPS remains owner.
 
 **Prerequisite:** `TF_WG_CONFIG` must already exist (from Step 3).
 

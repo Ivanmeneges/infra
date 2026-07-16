@@ -100,23 +100,20 @@ Terraform input `GRANT_RANCHER_ACCESS=true` runs `.github/scripts/rancher-grant-
 
 ### Workflow UI (when you run Terraform)
 
+**DEVOPS cluster-owner is automatic** — not shown in the workflow UI. Every new env gets DEVOPS as owner from `rancher-access-grants.json`.
+
 | Input | Default | Purpose |
 |-------|---------|---------|
-| `RANCHER_GRANT_DEVOPS` | ✅ true | Grant DEVOPS |
-| `RANCHER_DEVOPS_GROUP` | `DEVOPS` | DEVOPS group name |
-| `RANCHER_DEVOPS_ROLE` | `cluster-owner` | DEVOPS role this run |
-| `RANCHER_GRANT_GROUPS` | (empty) | Comma-separated teams from JSON, e.g. `QA,DEVELOPERS` — roles from JSON |
-| `RANCHER_CLUSTER_OWNER_GROUPS` | (empty) | Comma-separated groups for **cluster-owner**, e.g. `QA` or `DEVOPS,QA` |
+| `GRANT_RANCHER_ACCESS` | ✅ true | Master switch |
+| `GRANT_GROUP_ACCESS` | ☐ false | Apply other teams per JSON + env vars |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false | Grant cluster-owner to named group |
+| `RANCHER_CLUSTER_OWNER_GROUP` | (empty) | e.g. `QA` — DEVOPS stays owner too |
 
-**Add a team:** edit `rancher-access-grants.json` only — then select it in `RANCHER_GRANT_GROUPS` when running the workflow.
+**Example — DEVOPS only (new env):** leave both options unchecked.
 
-**Example — DEVOPS owner + QA owner for one env:**
-- `RANCHER_GRANT_GROUPS` = `QA`
-- `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
+**Example — DEVOPS + QA member:** set env `RANCHER_ACCESS_GRANTS` = `[{"group":"QA","enabled":true}]`, check `GRANT_GROUP_ACCESS`.
 
-**Example — DEVOPS owner + QA member:**
-- `RANCHER_GRANT_GROUPS` = `QA`
-- leave `RANCHER_CLUSTER_OWNER_GROUPS` empty
+**Example — DEVOPS + QA both owners:** enable `RANCHER_CLUSTER_OWNER_GROUP_ENABLED`, set group = `QA`.
 
 ### Example — repo defaults (DEVOPS on; QA/DEVELOPERS off)
 

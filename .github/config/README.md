@@ -15,29 +15,22 @@ Layers are **merged by `group` name** (later layers win):
 
 ### Workflow inputs (when you click Run workflow)
 
+**DEVOPS is always cluster-owner** for every environment — configured in `rancher-access-grants.json`, not in the Actions UI.
+
 | Input | Default | What it does |
 |-------|---------|--------------|
-| `GRANT_RANCHER_ACCESS` | ✅ true | Master switch |
-| `RANCHER_GRANT_DEVOPS` | ✅ true | Grant DEVOPS |
-| `RANCHER_DEVOPS_GROUP` | `DEVOPS` | DEVOPS group name (Keycloak/Rancher) |
-| `RANCHER_DEVOPS_ROLE` | `cluster-owner` | DEVOPS role this run |
-| `RANCHER_GRANT_GROUPS` | (empty) | Comma-separated teams from JSON to enable, e.g. `QA,DEVELOPERS` — **roles come from JSON** |
-| `RANCHER_CLUSTER_OWNER_GROUPS` | (empty) | Comma-separated groups for **cluster-owner**, e.g. `QA` or `DEVOPS,QA` |
+| `GRANT_RANCHER_ACCESS` | ✅ true | Master switch for Rancher RBAC step |
+| `GRANT_GROUP_ACCESS` | ☐ false | When ✅, also apply other teams from JSON (roles + `enabled` per JSON and env `RANCHER_ACCESS_GRANTS`) |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false | When ✅, grant **cluster-owner** to the group named below |
+| `RANCHER_CLUSTER_OWNER_GROUP` | (empty) | Group name, e.g. `QA` — overrides JSON role; **DEVOPS stays owner too** |
 
-**Add a new team:** edit `rancher-access-grants.json` only — no workflow YAML change. Then select it in `RANCHER_GRANT_GROUPS` when you run Terraform.
+**Typical new env (DEVOPS only):** leave `GRANT_GROUP_ACCESS` unchecked.
 
-**Example:** DEVOPS owner (default) + QA owner for one run:
-- `RANCHER_GRANT_GROUPS` = `QA`
-- `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
+**DEVOPS + QA member from JSON:** enable QA in JSON or env `RANCHER_ACCESS_GRANTS`, then check `GRANT_GROUP_ACCESS`.
 
-**Example:** DEVOPS owner + QA member:
-- `RANCHER_GRANT_GROUPS` = `QA`
-- leave `RANCHER_CLUSTER_OWNER_GROUPS` empty (uses `cluster-member` from JSON)
+**DEVOPS + QA both owners:** check `RANCHER_CLUSTER_OWNER_GROUP_ENABLED`, set `RANCHER_CLUSTER_OWNER_GROUP` = `QA` (with or without `GRANT_GROUP_ACCESS`).
 
-**Example:** QA owns the cluster (DEVOPS still member):
-- `RANCHER_DEVOPS_ROLE` = `cluster-member`
-- `RANCHER_GRANT_GROUPS` = `QA`
-- `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
+**Add a new team:** edit `rancher-access-grants.json` only — no workflow YAML change.
 
 ### Grant entry fields
 
