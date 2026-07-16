@@ -60,6 +60,7 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 | Document | Description | Who Should Read |
 |----------|-------------|-----------------|
 | **[Self-Service Deployment Guide](SELF_SERVICE_DEPLOYMENT_GUIDE.md)** | Full automated deployment runbook for QA/dev teams | QA, dev, new team members |
+| **[Automation Improvements](AUTOMATION_IMPROVEMENTS.md)** | Approval gates, multi-team Rancher, WG offboarding | DevOps, platform team |
 | **[Main README](../README.md)** | Complete deployment overview and quick start guide | Everyone - start here |
 | **[Glossary](GLOSSARY.md)** | Technical terms explained in plain language | Beginners |
 | **[Secret Generation Guide](SECRET_GENERATION_GUIDE.md)** | How to create all required secrets and credentials | Everyone before deployment |

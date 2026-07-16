@@ -1,0 +1,84 @@
+name: Setup environment protection
+
+# One-time (per environment) DevOps workflow: attach required reviewers to a GitHub
+# Environment so Terraform / Helmsman / WireGuard jobs pause for approval before running.
+#
+# Anyone with write access can still click "Run workflow", but jobs that reference
+# `environment: <env-name>` will wait until a configured reviewer approves.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ENV_NAME:
+        description: 'GitHub environment / branch name to protect (e.g. qajava11)'
+        required: true
+        type: string
+      CONFIG_FILE:
+        description: 'Path to protection JSON (default: .github/config/environment-protection.json)'
+        required: false
+        type: string
+        default: .github/config/environment-protection.json
+      REVIEWER_TEAMS:
+        description: 'Optional comma-separated team slugs (overrides config reviewer_teams)'
+        required: false
+        type: string
+      REVIEWER_USERS:
+        description: 'Optional comma-separated GitHub usernames (overrides config reviewer_users)'
+        required: false
+        type: string
+      DEPLOYMENT_BRANCHES:
+        description: 'Optional comma-separated branches allowed to deploy (empty = all branches)'
+        required: false
+        type: string
+      DRY_RUN:
+        description: 'Preview changes without calling GitHub API'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  protect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate token
+        run: |
+          if [ -z "${{ secrets.GH_INFRA_PAT }}" ] && [ -z "${{ secrets.ACTION_PAT }}" ]; then
+            echo "ERROR: GH_INFRA_PAT or ACTION_PAT is required (repo admin scope)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Configure environment protection
+        env:
+          GH_TOKEN: ${{ secrets.GH_INFRA_PAT }}
+          ACTION_PAT: ${{ secrets.ACTION_PAT }}
+          INPUT_ENV_NAME: ${{ inputs.ENV_NAME }}
+          INPUT_CONFIG: ${{ inputs.CONFIG_FILE }}
+          INPUT_TEAMS: ${{ inputs.REVIEWER_TEAMS }}
+          INPUT_USERS: ${{ inputs.REVIEWER_USERS }}
+          INPUT_BRANCHES: ${{ inputs.DEPLOYMENT_BRANCHES }}
+          INPUT_DRY_RUN: ${{ inputs.DRY_RUN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then GH_TOKEN="$ACTION_PAT"; fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "ERROR: GH_INFRA_PAT or ACTION_PAT is required"
+            exit 1
+          fi
+          export GH_TOKEN
+          chmod +x .github/scripts/setup-environment-protection.sh
+          args=(
+            --env "$INPUT_ENV_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --config "$INPUT_CONFIG"
+          )
+          [[ -n "$INPUT_TEAMS" ]] && args+=(--reviewer-teams "$INPUT_TEAMS")
+          [[ -n "$INPUT_USERS" ]] && args+=(--reviewer-users "$INPUT_USERS")
+          [[ -n "$INPUT_BRANCHES" ]] && args+=(--deployment-branches "$INPUT_BRANCHES")
+          [[ "$INPUT_DRY_RUN" == "true" ]] && args+=(--dry-run)
+          .github/scripts/setup-environment-protection.sh "${args[@]}"

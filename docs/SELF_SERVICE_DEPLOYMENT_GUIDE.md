@@ -339,6 +339,10 @@ Optional environment variable:
 | `RANCHER_DEVOPS_GROUP` | `DEVOPS` |
 | `RANCHER_DEVOPS_ROLE` | `cluster-owner` |
 
+> **Multi-team Rancher access:** Grants are now configured in `.github/config/rancher-access-grants.json` (JSON array) or per-environment variable `RANCHER_ACCESS_GRANTS`. See [AUTOMATION_IMPROVEMENTS.md](AUTOMATION_IMPROVEMENTS.md).
+
+> **DevOps approval:** Run workflow **Setup environment protection** once per environment so jobs pause for reviewer approval. See [AUTOMATION_IMPROVEMENTS.md](AUTOMATION_IMPROVEMENTS.md).
+
 **Prerequisite:** `TF_WG_CONFIG` must already exist (from Step 3).
 
 **What Terraform workflow automates:**
@@ -440,6 +444,8 @@ Run only after **all MOSIP pods are Running**.
 | `helmsman_esignet` | Deploy eSignet standalone profile |
 | `helmsman_signup` | Deploy signup stack |
 | `terraform-destroy` / Helmsman destroy workflows | Teardown — see `ENVIRONMENT_DESTRUCTION_GUIDE.md` |
+| `Setup environment protection` | One-time per env — DevOps approval gates |
+| `WireGuard offboard environment` | Revoke VPN + free peers — see `AUTOMATION_IMPROVEMENTS.md` |
 
 ---
 

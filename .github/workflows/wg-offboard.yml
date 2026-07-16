@@ -1,0 +1,120 @@
+name: WireGuard offboard environment
+
+# Revoke WireGuard VPN access for an environment:
+# - removes peers from live wg0 + persistent server config (old .conf stops working)
+# - clears assigned.txt and deletes GitHub environment VPN secrets
+# - optionally regenerates peer slots with new keys for reuse
+
+on:
+  workflow_dispatch:
+    inputs:
+      ENV_NAME:
+        description: 'Environment / branch name to offboard'
+        required: true
+        type: string
+      JUMPSERVER_HOST:
+        description: 'Jumpserver / WireGuard VM public IP or DNS (SSH reachable)'
+        required: true
+        type: string
+      WG_DIR:
+        description: 'WireGuard env dir on the VM'
+        required: false
+        type: string
+        default: /home/ubuntu/wireguard_env_2026
+      DELETE_ENVIRONMENT:
+        description: 'Delete the GitHub environment after removing VPN secrets'
+        required: false
+        type: boolean
+        default: false
+      REGENERATE_PEERS:
+        description: 'Recreate peer key material on jumpserver so slots are ready for reuse'
+        required: false
+        type: boolean
+        default: true
+      DRY_RUN:
+        description: 'Preview actions without revoking access or deleting secrets'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wg-offboard-${{ inputs.ENV_NAME }}
+  cancel-in-progress: false
+
+jobs:
+  offboard:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    environment: ${{ inputs.ENV_NAME }}
+    steps:
+      - name: Validate required secrets
+        run: |
+          missing=()
+          [[ -z "${{ secrets.ACTION_PAT }}" ]] && missing+=(ACTION_PAT)
+          [[ -z "${{ secrets.MOSIP_AWS_PEM }}" ]] && missing+=(MOSIP_AWS_PEM)
+          if ((${#missing[@]})); then
+            echo "ERROR: Missing repository secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Write SSH private key
+        env:
+          SSH_KEY: ${{ secrets.MOSIP_AWS_PEM }}
+        run: |
+          SSH_KEY_PATH="${RUNNER_TEMP}/jumpserver_key"
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$SSH_KEY_PATH"
+          chmod 600 "$SSH_KEY_PATH"
+          echo "SSH_KEY_PATH=$SSH_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Run WireGuard offboarding
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          GITHUB_TOKEN: ${{ secrets.ACTION_PAT }}
+          INPUT_ENV_NAME: ${{ inputs.ENV_NAME }}
+          INPUT_JUMPSERVER_HOST: ${{ inputs.JUMPSERVER_HOST }}
+          INPUT_WG_DIR: ${{ inputs.WG_DIR }}
+          INPUT_DELETE_ENV: ${{ inputs.DELETE_ENVIRONMENT }}
+          INPUT_REGENERATE: ${{ inputs.REGENERATE_PEERS }}
+          INPUT_DRY_RUN: ${{ inputs.DRY_RUN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          chmod +x .github/scripts/wg-offboard.sh
+          args=(
+            --env "$INPUT_ENV_NAME"
+            --host "$INPUT_JUMPSERVER_HOST"
+            --ssh-key "$SSH_KEY_PATH"
+            --repo "$GITHUB_REPOSITORY"
+            --wg-dir "$INPUT_WG_DIR"
+          )
+          [[ "$INPUT_DELETE_ENV" == "true" ]] && args+=(--delete-environment)
+          [[ "$INPUT_REGENERATE" == "true" ]] && args+=(--regenerate-peers)
+          [[ "$INPUT_DRY_RUN" == "true" ]] && args+=(--dry-run)
+          .github/scripts/wg-offboard.sh "${args[@]}"
+
+      - name: Cleanup SSH private key
+        if: always()
+        run: rm -f "${SSH_KEY_PATH:-}"
+
+      - name: Commit updated peer allocation tracker
+        if: ${{ inputs.DRY_RUN == false }}
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          INPUT_ENV_NAME: ${{ inputs.ENV_NAME }}
+        run: |
+          tracker=".github/scripts/wg-peer-allocation.tsv"
+          if git diff --quiet -- "$tracker" 2>/dev/null; then
+            echo "No tracker change to commit"
+            exit 0
+          fi
+          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git pull --rebase --autostash "$remote_url" "${GITHUB_REF_NAME}"
+          git add "$tracker"
+          git commit -s -m "wg: offboard environment $INPUT_ENV_NAME"
+          git push "$remote_url" "HEAD:${GITHUB_REF_NAME}"

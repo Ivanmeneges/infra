@@ -49,6 +49,8 @@ jobs:
   onboard:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
+    # Pauses for DevOps approval when environment protection is configured (see setup-environment-protection workflow).
+    environment: ${{ inputs.ENV_NAME }}
     steps:
       - name: Validate required secrets
         run: |

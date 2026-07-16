@@ -1,0 +1,8 @@
+[
+  {
+    "group": "DEVOPS",
+    "role": "cluster-owner",
+    "principal_id": "keycloak_group://DEVOPS",
+    "fix_misbound_user": true
+  }
+]

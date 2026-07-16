@@ -1,0 +1,7 @@
+{
+  "reviewer_teams": ["devops"],
+  "reviewer_users": [],
+  "deployment_branches": [],
+  "prevent_self_review": false,
+  "wait_timer_minutes": 0
+}
