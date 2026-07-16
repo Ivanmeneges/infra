@@ -7,7 +7,8 @@
 #      - DEVOPS is cluster-owner by default; other groups use enabled true/false
 #   2. Environment patch: RANCHER_ACCESS_GRANTS (JSON array, merge by group name)
 #   3. DEVOPS shortcuts: RANCHER_DEVOPS_ROLE, RANCHER_DEVOPS_ENABLED (per-environment)
-#   4. CLI --grants-json replaces everything (testing / ad-hoc only)
+#   4. Workflow patch: WORKFLOW_RANCHER_PATCH (from Actions UI inputs — highest priority)
+#   5. CLI --grants-json replaces everything (testing / ad-hoc only)
 #
 # Grant entry fields:
 #   group             (required) IdP group name, e.g. DEVOPS
@@ -58,6 +59,7 @@ Environment (per GitHub environment / shell):
   RANCHER_DEVOPS_ROLE      Override DEVOPS role only, e.g. cluster-member
   RANCHER_DEVOPS_ENABLED   true/false — enable or disable DEVOPS grant for this env
   RANCHER_DEVOPS_GROUP     DEVOPS group name if not "DEVOPS" (default: DEVOPS)
+  WORKFLOW_RANCHER_PATCH   JSON array from workflow_dispatch inputs (highest priority)
 EOF
 }
 
@@ -156,6 +158,10 @@ resolve_grants_json() {
   if [[ "$devops_patch" != "[]" ]]; then
     merged="$(jq -c -s "$JQ_MERGE" <(printf '%s' "$merged") <(printf '%s' "$devops_patch"))"
     log "Applied DEVOPS env shortcuts (group=$DEVOPS_GROUP_NAME)"
+  fi
+  if [[ -n "${WORKFLOW_RANCHER_PATCH:-}" && "$WORKFLOW_RANCHER_PATCH" != "[]" ]]; then
+    merged="$(jq -c -s "$JQ_MERGE" <(printf '%s' "$merged") <(printf '%s' "$WORKFLOW_RANCHER_PATCH"))"
+    log "Applied workflow_dispatch patch (Actions UI selections)"
   fi
   if [[ -n "${RANCHER_ACCESS_GRANTS:-}" ]]; then
     log "Merged RANCHER_ACCESS_GRANTS patch onto base file"

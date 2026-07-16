@@ -4,13 +4,34 @@
 
 **Repo-wide defaults** for Rancher cluster RBAC after `ENABLE_RANCHER_IMPORT=true`.
 
-Layers are **merged by `group` name** (environment overrides win):
+Layers are **merged by `group` name** (later layers win):
 
 | Layer | Source | Purpose |
 |-------|--------|---------|
-| 1. Base | `.github/config/rancher-access-grants.json` | DEVOPS = `cluster-owner`; other teams on/off via `enabled` |
-| 2. Env patch | `vars.RANCHER_ACCESS_GRANTS` | Per-env merge: change role, enable/disable any group |
-| 3. DEVOPS shortcuts | `vars.RANCHER_DEVOPS_ROLE`, `vars.RANCHER_DEVOPS_ENABLED` | Quick per-env DEVOPS override |
+| 1. Base | `.github/config/rancher-access-grants.json` | Team catalog + default roles |
+| 2. Env patch | `vars.RANCHER_ACCESS_GRANTS` | Per-environment defaults |
+| 3. DEVOPS shortcuts | `vars.RANCHER_DEVOPS_ROLE`, `vars.RANCHER_DEVOPS_ENABLED` | Per-env DEVOPS override |
+| 4. **Workflow UI** | `terraform.yml` inputs (see below) | **Per-run selections — highest priority** |
+
+### Workflow inputs (when you click Run workflow)
+
+| Input | Default | What it does |
+|-------|---------|--------------|
+| `GRANT_RANCHER_ACCESS` | ✅ true | Master switch |
+| `RANCHER_GRANT_DEVOPS` | ✅ true | Grant DEVOPS |
+| `RANCHER_DEVOPS_ROLE` | `cluster-owner` | DEVOPS role this run |
+| `RANCHER_GRANT_QA` | ☐ false | Enable QA (role from JSON unless owner override) |
+| `RANCHER_GRANT_DEVELOPERS` | ☐ false | Enable DEVELOPERS |
+| `RANCHER_EXTRA_GROUPS` | (empty) | e.g. `SECURITY` — other groups from JSON |
+| `RANCHER_CLUSTER_OWNER_GROUPS` | (empty) | e.g. `QA` or `DEVOPS,QA` — grant **cluster-owner** |
+
+**Example:** DEVOPS owner + QA owner for one run:
+- `RANCHER_GRANT_QA` = ✅
+- `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
+
+**Example:** DEVOPS owner + QA member:
+- `RANCHER_GRANT_QA` = ✅
+- leave `RANCHER_CLUSTER_OWNER_GROUPS` empty (uses `cluster-member` from JSON)
 
 ### Grant entry fields
 
