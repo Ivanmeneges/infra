@@ -336,8 +336,13 @@ Optional environment variable:
 | `ENABLE_RANCHER_IMPORT` | ✅ **true** |
 | `PUBLISH_KUBECONFIG` | ✅ **true** (default) |
 | `GRANT_RANCHER_ACCESS` | ✅ **true** (default) |
+| `RANCHER_GRANT_DEVOPS` | ✅ **true** (DEVOPS cluster-owner by default) |
+| `RANCHER_GRANT_GROUPS` | e.g. `QA` or `QA,DEVELOPERS` — teams from JSON catalog |
+| `RANCHER_CLUSTER_OWNER_GROUPS` | e.g. `QA` — grant cluster-owner to named groups |
 
-Rancher teams/roles are read from `.github/config/rancher-access-grants.json` or environment variable `RANCHER_ACCESS_GRANTS` (JSON array). No per-team workflow inputs.
+**Defaults:** DEVOPS is always **cluster-owner** unless you change `RANCHER_DEVOPS_ROLE` or add another group to `RANCHER_CLUSTER_OWNER_GROUPS`. Other teams use roles from `.github/config/rancher-access-grants.json` unless you override owner access by group name.
+
+Per-environment defaults can still be set with `vars.RANCHER_ACCESS_GRANTS`. Workflow UI selections override those for that run.
 
 **Prerequisite:** `TF_WG_CONFIG` must already exist (from Step 3).
 
@@ -346,7 +351,7 @@ Rancher teams/roles are read from `.github/config/rancher-access-grants.json` or
 | Step | Script | Replaces manual step |
 |------|--------|----------------------|
 | Mint Rancher import URL | `.github/scripts/rancher-register-cluster.sh` | Copy import YAML from Rancher UI |
-| Grant DEVOPS group access | `.github/scripts/rancher-grant-cluster-access.sh` | Manual Rancher role binding |
+| Grant multi-team Rancher access | `.github/scripts/rancher-grant-cluster-access-batch.sh` | Manual Rancher role binding per group |
 | Publish `KUBECONFIG` | `.github/scripts/rancher-fetch-kubeconfig.sh` | Copy kubeconfig to GitHub secret |
 | Apply QA RBAC in cluster | `qa-dev-rbac.yaml.tpl` | Giving everyone cluster-admin |
 

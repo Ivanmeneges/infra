@@ -5,22 +5,29 @@
 # Outputs a JSON array on stdout to merge (highest priority) into rancher-access-grants.json.
 #
 # Environment (set by terraform.yml from workflow_dispatch inputs):
+#   WORKFLOW_DEVOPS_GROUP         DEVOPS group name (default: DEVOPS)
 #   WORKFLOW_DEVOPS_ROLE          cluster-owner | cluster-member (default: cluster-owner)
 #   WORKFLOW_GRANT_DEVOPS         true | false (default: true)
-#   WORKFLOW_GRANT_QA             true | false (default: false)
-#   WORKFLOW_GRANT_DEVELOPERS     true | false (default: false)
-#   WORKFLOW_EXTRA_GROUPS         Comma-separated extra groups from JSON to enable
+#   WORKFLOW_GRANT_GROUPS         Comma-separated non-DEVOPS groups from catalog to enable
 #   WORKFLOW_CLUSTER_OWNER_GROUPS Comma-separated groups to grant cluster-owner this run
+#   WORKFLOW_GRANTS_CATALOG       Path to rancher-access-grants.json (optional)
 
 set -euo pipefail
 
 DEVOPS_GROUP="${WORKFLOW_DEVOPS_GROUP:-DEVOPS}"
 DEVOPS_ROLE="${WORKFLOW_DEVOPS_ROLE:-cluster-owner}"
 GRANT_DEVOPS="${WORKFLOW_GRANT_DEVOPS:-true}"
-GRANT_QA="${WORKFLOW_GRANT_QA:-false}"
-GRANT_DEVELOPERS="${WORKFLOW_GRANT_DEVELOPERS:-false}"
-EXTRA_GROUPS="${WORKFLOW_EXTRA_GROUPS:-}"
+GRANT_GROUPS="${WORKFLOW_GRANT_GROUPS:-}"
 CLUSTER_OWNER_GROUPS="${WORKFLOW_CLUSTER_OWNER_GROUPS:-}"
+CATALOG_FILE="${WORKFLOW_GRANTS_CATALOG:-}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "$CATALOG_FILE" ]]; then
+  CATALOG_FILE="${SCRIPT_DIR%/scripts}/config/rancher-access-grants.json"
+fi
+
+command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
+[[ -f "$CATALOG_FILE" ]] || { echo "Missing grants catalog: $CATALOG_FILE" >&2; exit 1; }
 
 patch='[]'
 
@@ -42,34 +49,50 @@ bool_enabled() {
   esac
 }
 
-# DEVOPS — always configured; default cluster-owner
+group_in_list() {
+  local target="$1" list="$2"
+  [[ -n "${list// }" ]] || return 1
+  IFS=',' read -ra ITEMS <<<"$list"
+  for raw in "${ITEMS[@]}"; do
+    g="${raw// /}"
+    [[ "$g" == "$target" ]] && return 0
+  done
+  return 1
+}
+
+catalog_role_for() {
+  local group="$1"
+  jq -r --arg g "$group" '
+    .[] | select(.group == $g) | .role // empty
+  ' "$CATALOG_FILE" | head -n1
+}
+
+# DEVOPS — default cluster-owner; can be toggled or overridden via CLUSTER_OWNER_GROUPS
 if [[ "$(bool_enabled "$GRANT_DEVOPS")" == "true" ]]; then
   add_entry "$DEVOPS_GROUP" "$DEVOPS_ROLE" true true
 else
   add_entry "$DEVOPS_GROUP" "$DEVOPS_ROLE" false false
 fi
 
-# Known teams from rancher-access-grants.json (toggle in workflow UI)
-add_entry "QA" "cluster-member" "$(bool_enabled "$GRANT_QA")" false
-add_entry "DEVELOPERS" "cluster-member" "$(bool_enabled "$GRANT_DEVELOPERS")" false
+# Non-DEVOPS teams from catalog: enable only when listed in WORKFLOW_GRANT_GROUPS
+while IFS= read -r group; do
+  [[ -n "$group" ]] || continue
+  [[ "$group" == "$DEVOPS_GROUP" ]] && continue
+  role="$(catalog_role_for "$group")"
+  [[ -n "$role" ]] || role="cluster-member"
+  if group_in_list "$group" "$GRANT_GROUPS"; then
+    add_entry "$group" "$role" true false
+  else
+    add_entry "$group" "$role" false false
+  fi
+done < <(jq -r '.[].group' "$CATALOG_FILE")
 
-# Extra groups from JSON (comma-separated)
-if [[ -n "${EXTRA_GROUPS// }" ]]; then
-  IFS=',' read -ra EXTRAS <<<"$EXTRA_GROUPS"
-  for raw in "${EXTRAS[@]}"; do
-    g="${raw// /}"
-    [[ -n "$g" ]] || continue
-    add_entry "$g" "cluster-member" true false
-  done
-fi
-
-# Cluster-owner overrides for any group (DEVOPS, QA, custom, etc.)
+# Cluster-owner overrides for any group (DEVOPS, QA, teams from JSON, etc.)
 if [[ -n "${CLUSTER_OWNER_GROUPS// }" ]]; then
   IFS=',' read -ra OWNERS <<<"$CLUSTER_OWNER_GROUPS"
   for raw in "${OWNERS[@]}"; do
     g="${raw// /}"
     [[ -n "$g" ]] || continue
-    # Upsert: enable + cluster-owner (overrides member role from above)
     if jq -e --arg g "$g" 'map(select(.group == $g)) | length > 0' <<<"$patch" >/dev/null; then
       patch="$(jq -c --arg g "$g" \
         'map(if .group == $g then .role = "cluster-owner" | .enabled = true else . end)' <<<"$patch")"

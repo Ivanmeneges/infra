@@ -95,10 +95,15 @@ on:
         type: boolean
         default: true
       RANCHER_GRANT_DEVOPS:
-        description: 'Grant DEVOPS group access on this run'
+        description: 'Grant DEVOPS group access on this run (default cluster-owner)'
         required: false
         type: boolean
         default: true
+      RANCHER_DEVOPS_GROUP:
+        description: 'DEVOPS group name in Rancher/Keycloak (default DEVOPS)'
+        required: false
+        type: string
+        default: 'DEVOPS'
       RANCHER_DEVOPS_ROLE:
         description: 'Rancher role for DEVOPS group on this run'
         required: false
@@ -107,23 +112,13 @@ on:
           - cluster-owner
           - cluster-member
         default: cluster-owner
-      RANCHER_GRANT_QA:
-        description: 'Grant QA group (default role from rancher-access-grants.json unless cluster-owner override below)'
-        required: false
-        type: boolean
-        default: false
-      RANCHER_GRANT_DEVELOPERS:
-        description: 'Grant DEVELOPERS group (default role from JSON unless cluster-owner override below)'
-        required: false
-        type: boolean
-        default: false
-      RANCHER_EXTRA_GROUPS:
-        description: 'Comma-separated extra groups from rancher-access-grants.json to enable (e.g. SECURITY)'
+      RANCHER_GRANT_GROUPS:
+        description: 'Comma-separated teams to grant from rancher-access-grants.json (e.g. QA,DEVELOPERS,SECURITY). Role comes from JSON unless cluster-owner override below.'
         required: false
         type: string
         default: ''
       RANCHER_CLUSTER_OWNER_GROUPS:
-        description: 'Comma-separated groups to grant cluster-owner on this run (e.g. QA or DEVOPS,QA). DEVOPS role is also set by RANCHER_DEVOPS_ROLE above.'
+        description: 'Comma-separated groups to grant cluster-owner on this run (e.g. QA or DEVOPS,QA). DEVOPS default owner is also controlled by RANCHER_DEVOPS_ROLE above.'
         required: false
         type: string
         default: ''
@@ -450,11 +445,10 @@ jobs:
           RANCHER_DEVOPS_ENABLED: ${{ vars.RANCHER_DEVOPS_ENABLED }}
           RANCHER_DEVOPS_GROUP: ${{ vars.RANCHER_DEVOPS_GROUP }}
           RANCHER_GROUP_AUTH_PREFIX: ${{ vars.RANCHER_GROUP_AUTH_PREFIX }}
+          WORKFLOW_DEVOPS_GROUP: ${{ inputs.RANCHER_DEVOPS_GROUP || vars.RANCHER_DEVOPS_GROUP || 'DEVOPS' }}
           WORKFLOW_DEVOPS_ROLE: ${{ inputs.RANCHER_DEVOPS_ROLE }}
           WORKFLOW_GRANT_DEVOPS: ${{ inputs.RANCHER_GRANT_DEVOPS }}
-          WORKFLOW_GRANT_QA: ${{ inputs.RANCHER_GRANT_QA }}
-          WORKFLOW_GRANT_DEVELOPERS: ${{ inputs.RANCHER_GRANT_DEVELOPERS }}
-          WORKFLOW_EXTRA_GROUPS: ${{ inputs.RANCHER_EXTRA_GROUPS }}
+          WORKFLOW_GRANT_GROUPS: ${{ inputs.RANCHER_GRANT_GROUPS }}
           WORKFLOW_CLUSTER_OWNER_GROUPS: ${{ inputs.RANCHER_CLUSTER_OWNER_GROUPS }}
         run: |
           if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
@@ -469,6 +463,9 @@ jobs:
           fi
 
           chmod +x "$GITHUB_WORKSPACE/.github/scripts/build-rancher-workflow-patch.sh"
+          export WORKFLOW_GRANTS_CATALOG="$GRANTS_FILE"
+          echo "Rancher team catalog:"
+          jq -r '.[] | "  - \(.group): \(.role) (catalog enabled=\(.enabled // true))"' "$GRANTS_FILE"
           WORKFLOW_RANCHER_PATCH="$("$GITHUB_WORKSPACE/.github/scripts/build-rancher-workflow-patch.sh")"
           echo "Workflow Rancher patch: $WORKFLOW_RANCHER_PATCH"
           export WORKFLOW_RANCHER_PATCH

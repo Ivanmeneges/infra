@@ -87,15 +87,36 @@ Terraform workflow had single inputs `RANCHER_DEVOPS_GROUP` and `RANCHER_DEVOPS_
 
 ### Solution
 
-Grants use **three merge layers** (later layers override earlier for the same `group`):
+Grants use **four merge layers** (later layers override earlier for the same `group`):
 
 | Layer | Source | Purpose |
 |-------|--------|---------|
 | 1 | `.github/config/rancher-access-grants.json` | DEVOPS `cluster-owner` by default; other groups `enabled: true/false` |
 | 2 | `vars.RANCHER_ACCESS_GRANTS` | Per-env **patch** (merge by group — not full replace) |
 | 3 | `vars.RANCHER_DEVOPS_ROLE` / `RANCHER_DEVOPS_ENABLED` | Quick DEVOPS-only override per env |
+| 4 | **Terraform workflow UI** | Per-run team selection — highest priority |
 
 Terraform input `GRANT_RANCHER_ACCESS=true` runs `.github/scripts/rancher-grant-cluster-access-batch.sh`, which merges layers then applies each enabled grant.
+
+### Workflow UI (when you run Terraform)
+
+| Input | Default | Purpose |
+|-------|---------|---------|
+| `RANCHER_GRANT_DEVOPS` | ✅ true | Grant DEVOPS |
+| `RANCHER_DEVOPS_GROUP` | `DEVOPS` | DEVOPS group name |
+| `RANCHER_DEVOPS_ROLE` | `cluster-owner` | DEVOPS role this run |
+| `RANCHER_GRANT_GROUPS` | (empty) | Comma-separated teams from JSON, e.g. `QA,DEVELOPERS` — roles from JSON |
+| `RANCHER_CLUSTER_OWNER_GROUPS` | (empty) | Comma-separated groups for **cluster-owner**, e.g. `QA` or `DEVOPS,QA` |
+
+**Add a team:** edit `rancher-access-grants.json` only — then select it in `RANCHER_GRANT_GROUPS` when running the workflow.
+
+**Example — DEVOPS owner + QA owner for one env:**
+- `RANCHER_GRANT_GROUPS` = `QA`
+- `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
+
+**Example — DEVOPS owner + QA member:**
+- `RANCHER_GRANT_GROUPS` = `QA`
+- leave `RANCHER_CLUSTER_OWNER_GROUPS` empty
 
 ### Example — repo defaults (DEVOPS on; QA/DEVELOPERS off)
 
@@ -143,13 +164,7 @@ or shortcut variable `RANCHER_DEVOPS_ROLE` = `cluster-member`.
 
 **Disable DEVOPS grant for one env** — variable `RANCHER_DEVOPS_ENABLED` = `false`.
 
-### Removed workflow inputs
-
-These are **removed** from `terraform.yml` (use JSON instead):
-
-- ~~`RANCHER_DEVOPS_GROUP`~~
-- ~~`RANCHER_DEVOPS_ROLE`~~
-- ~~`GRANT_RANCHER_DEVOPS_ACCESS`~~ → renamed to `GRANT_RANCHER_ACCESS`
+See `.github/config/README.md` for full workflow input reference.
 
 ---
 

@@ -19,19 +19,25 @@ Layers are **merged by `group` name** (later layers win):
 |-------|---------|--------------|
 | `GRANT_RANCHER_ACCESS` | ✅ true | Master switch |
 | `RANCHER_GRANT_DEVOPS` | ✅ true | Grant DEVOPS |
+| `RANCHER_DEVOPS_GROUP` | `DEVOPS` | DEVOPS group name (Keycloak/Rancher) |
 | `RANCHER_DEVOPS_ROLE` | `cluster-owner` | DEVOPS role this run |
-| `RANCHER_GRANT_QA` | ☐ false | Enable QA (role from JSON unless owner override) |
-| `RANCHER_GRANT_DEVELOPERS` | ☐ false | Enable DEVELOPERS |
-| `RANCHER_EXTRA_GROUPS` | (empty) | e.g. `SECURITY` — other groups from JSON |
-| `RANCHER_CLUSTER_OWNER_GROUPS` | (empty) | e.g. `QA` or `DEVOPS,QA` — grant **cluster-owner** |
+| `RANCHER_GRANT_GROUPS` | (empty) | Comma-separated teams from JSON to enable, e.g. `QA,DEVELOPERS` — **roles come from JSON** |
+| `RANCHER_CLUSTER_OWNER_GROUPS` | (empty) | Comma-separated groups for **cluster-owner**, e.g. `QA` or `DEVOPS,QA` |
 
-**Example:** DEVOPS owner + QA owner for one run:
-- `RANCHER_GRANT_QA` = ✅
+**Add a new team:** edit `rancher-access-grants.json` only — no workflow YAML change. Then select it in `RANCHER_GRANT_GROUPS` when you run Terraform.
+
+**Example:** DEVOPS owner (default) + QA owner for one run:
+- `RANCHER_GRANT_GROUPS` = `QA`
 - `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
 
 **Example:** DEVOPS owner + QA member:
-- `RANCHER_GRANT_QA` = ✅
+- `RANCHER_GRANT_GROUPS` = `QA`
 - leave `RANCHER_CLUSTER_OWNER_GROUPS` empty (uses `cluster-member` from JSON)
+
+**Example:** QA owns the cluster (DEVOPS still member):
+- `RANCHER_DEVOPS_ROLE` = `cluster-member`
+- `RANCHER_GRANT_GROUPS` = `QA`
+- `RANCHER_CLUSTER_OWNER_GROUPS` = `QA`
 
 ### Grant entry fields
 
