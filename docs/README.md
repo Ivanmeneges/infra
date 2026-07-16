@@ -8,30 +8,35 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 
 **Start your MOSIP deployment journey here:**
 
-1. **[Glossary](GLOSSARY.md)** - Learn all the technical terms
+1. **[Self-Service Deployment Guide](SELF_SERVICE_DEPLOYMENT_GUIDE.md)** - Complete QA/dev handover runbook
+ - All automated workflows (WireGuard onboard, Terraform, Helmsman)
+ - Secrets, variables, DSF files, and step-by-step checklist
+ - Download and share with new team members
+
+2. **[Glossary](GLOSSARY.md)** - Learn all the technical terms
  - What is AWS? What is Kubernetes? What is Terraform?
  - Plain language explanations for every concept
  - No prior cloud knowledge required
 
-2. **[Secret Generation Guide](SECRET_GENERATION_GUIDE.md)** - Create required credentials
+3. **[Secret Generation Guide](SECRET_GENERATION_GUIDE.md)** - Create required credentials
  - Step-by-step SSH key generation
  - How to get AWS credentials
  - Creating passwords and VPN configs
  - Includes links to official documentation
 
-3. **[Workflow Guide](WORKFLOW_GUIDE.md)** - Run deployments through GitHub
+4. **[Workflow Guide](WORKFLOW_GUIDE.md)** - Run deployments through GitHub
  - Visual walkthrough of GitHub Actions interface
  - Where to click and what to select
  - Understanding dry-run vs actual deployment
  - Screenshots and examples
 
-4. **[DSF Configuration Guide](DSF_CONFIGURATION_GUIDE.md)** - Configure MOSIP services
+5. **[DSF Configuration Guide](DSF_CONFIGURATION_GUIDE.md)** - Configure MOSIP services
  - What is a DSF file and why you need it
  - How to find and update clusterid
  - Domain configuration explained
  - Examples for each setting
 
-5. **[Environment Destruction Guide](ENVIRONMENT_DESTRUCTION_GUIDE.md)** - Clean up resources
+6. **[Environment Destruction Guide](ENVIRONMENT_DESTRUCTION_GUIDE.md)** - Clean up resources
  - Safe teardown procedures
  - How to avoid unexpected costs
  - Backup before destruction
@@ -54,6 +59,7 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 
 | Document | Description | Who Should Read |
 |----------|-------------|-----------------|
+| **[Self-Service Deployment Guide](SELF_SERVICE_DEPLOYMENT_GUIDE.md)** | Full automated deployment runbook for QA/dev teams | QA, dev, new team members |
 | **[Main README](../README.md)** | Complete deployment overview and quick start guide | Everyone - start here |
 | **[Glossary](GLOSSARY.md)** | Technical terms explained in plain language | Beginners |
 | **[Secret Generation Guide](SECRET_GENERATION_GUIDE.md)** | How to create all required secrets and credentials | Everyone before deployment |
