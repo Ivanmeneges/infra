@@ -87,32 +87,32 @@ Terraform workflow had single inputs `RANCHER_DEVOPS_GROUP` and `RANCHER_DEVOPS_
 
 ### Solution
 
-Grants are defined as a **JSON array** in:
+Grants use **three merge layers** (later layers override earlier for the same `group`):
 
-- **Default:** `.github/config/rancher-access-grants.json` (committed to repo)  
-- **Per-env override:** GitHub environment variable `RANCHER_ACCESS_GRANTS` (same JSON schema)
+| Layer | Source | Purpose |
+|-------|--------|---------|
+| 1 | `.github/config/rancher-access-grants.json` | DEVOPS `cluster-owner` by default; other groups `enabled: true/false` |
+| 2 | `vars.RANCHER_ACCESS_GRANTS` | Per-env **patch** (merge by group — not full replace) |
+| 3 | `vars.RANCHER_DEVOPS_ROLE` / `RANCHER_DEVOPS_ENABLED` | Quick DEVOPS-only override per env |
 
-Terraform input `GRANT_RANCHER_ACCESS=true` runs `.github/scripts/rancher-grant-cluster-access-batch.sh`, which loops all entries.
+Terraform input `GRANT_RANCHER_ACCESS=true` runs `.github/scripts/rancher-grant-cluster-access-batch.sh`, which merges layers then applies each enabled grant.
 
-### Example — multiple teams, different roles
+### Example — repo defaults (DEVOPS on; QA/DEVELOPERS off)
 
 ```json
 [
   {
     "group": "DEVOPS",
     "role": "cluster-owner",
+    "enabled": true,
     "principal_id": "keycloak_group://DEVOPS",
     "fix_misbound_user": true
   },
   {
     "group": "QA",
     "role": "cluster-member",
+    "enabled": false,
     "principal_id": "keycloak_group://QA"
-  },
-  {
-    "group": "DEVELOPERS",
-    "role": "cluster-member",
-    "principal_id": "keycloak_group://DEVELOPERS"
   }
 ]
 ```
@@ -121,12 +121,27 @@ Terraform input `GRANT_RANCHER_ACCESS=true` runs `.github/scripts/rancher-grant-
 |-------|-------------|
 | `group` | Keycloak / IdP group name in Rancher |
 | `role` | Rancher role template: `cluster-owner`, `cluster-member`, etc. |
+| `enabled` | `true` / `false` — `false` skips that group (default: `true`) |
 | `principal_id` | Full principal (recommended): `keycloak_group://GROUPNAME` |
 | `fix_misbound_user` | Optional; run misbinding repair for DEVOPS-style groups |
 
-### Per-environment override
+### Per-environment override (merge patch)
 
-For environment `qajava11`, set variable `RANCHER_ACCESS_GRANTS` with a JSON array (e.g. QA gets `cluster-member` only in QA envs). No workflow YAML changes needed.
+**Enable QA on `qajava11` only** — variable `RANCHER_ACCESS_GRANTS`:
+
+```json
+[{ "group": "QA", "enabled": true }]
+```
+
+**Change DEVOPS role for one env** — either:
+
+```json
+[{ "group": "DEVOPS", "role": "cluster-member" }]
+```
+
+or shortcut variable `RANCHER_DEVOPS_ROLE` = `cluster-member`.
+
+**Disable DEVOPS grant for one env** — variable `RANCHER_DEVOPS_ENABLED` = `false`.
 
 ### Removed workflow inputs
 

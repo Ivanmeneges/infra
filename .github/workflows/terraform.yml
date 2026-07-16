@@ -413,6 +413,9 @@ jobs:
           RANCHER_CLUSTER_NAME_INPUT: ${{ inputs.RANCHER_CLUSTER_NAME }}
           REF_NAME: ${{ github.ref_name }}
           RANCHER_ACCESS_GRANTS: ${{ vars.RANCHER_ACCESS_GRANTS }}
+          RANCHER_DEVOPS_ROLE: ${{ vars.RANCHER_DEVOPS_ROLE }}
+          RANCHER_DEVOPS_ENABLED: ${{ vars.RANCHER_DEVOPS_ENABLED }}
+          RANCHER_DEVOPS_GROUP: ${{ vars.RANCHER_DEVOPS_GROUP }}
           RANCHER_GROUP_AUTH_PREFIX: ${{ vars.RANCHER_GROUP_AUTH_PREFIX }}
         run: |
           if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
@@ -421,8 +424,9 @@ jobs:
           fi
           CLUSTER_NAME="${RANCHER_CLUSTER_NAME_INPUT:-$REF_NAME}"
           GRANTS_FILE="$GITHUB_WORKSPACE/.github/config/rancher-access-grants.json"
-          if [ -z "${RANCHER_ACCESS_GRANTS:-}" ] && [ ! -f "$GRANTS_FILE" ]; then
-            echo "Skipping Rancher grants: set vars.RANCHER_ACCESS_GRANTS or commit $GRANTS_FILE"
+          if [ -z "${RANCHER_ACCESS_GRANTS:-}" ] && [ ! -f "$GRANTS_FILE" ] \
+             && [ -z "${RANCHER_DEVOPS_ROLE:-}" ] && [ -z "${RANCHER_DEVOPS_ENABLED:-}" ]; then
+            echo "Skipping Rancher grants: configure $GRANTS_FILE and/or environment overrides"
             exit 0
           fi
           echo "Applying Rancher access grants for cluster '$CLUSTER_NAME' ..."

@@ -2,7 +2,20 @@
   {
     "group": "DEVOPS",
     "role": "cluster-owner",
+    "enabled": true,
     "principal_id": "keycloak_group://DEVOPS",
     "fix_misbound_user": true
+  },
+  {
+    "group": "QA",
+    "role": "cluster-member",
+    "enabled": false,
+    "principal_id": "keycloak_group://QA"
+  },
+  {
+    "group": "DEVELOPERS",
+    "role": "cluster-member",
+    "enabled": false,
+    "principal_id": "keycloak_group://DEVELOPERS"
   }
 ]

@@ -73,7 +73,7 @@ Pick the MOSIP platform version folder (`1.2.0.x` vs `1.2.1.x`) to match your re
 | WireGuard peer allocation | **Workflow:** WireGuard onboard environment | Manual SSH to jump server |
 | `TF_WG_CONFIG`, `CLUSTER_WIREGUARD_WG0/WG1` | Auto-published by wg-onboard | Manual copy to GitHub secrets |
 | Rancher cluster registration | **Terraform:** `ENABLE_RANCHER_IMPORT=true` | Paste import URL in tfvars |
-| Rancher group access (DEVOPS) | **Terraform:** `GRANT_RANCHER_DEVOPS_ACCESS=true` | Manual Rancher UI |
+| Rancher group access (multi-team) | **Terraform:** `GRANT_RANCHER_ACCESS=true` + `rancher-access-grants.json` | Manual Rancher UI |
 | `KUBECONFIG` secret | **Terraform:** `PUBLISH_KUBECONFIG=true` | Manual copy from Terraform output |
 | DSF domain names | **Workflow inputs** + env vars (`${domain_name}`) | Search-replace `sandbox.xyz.net` in every DSF |
 | Captcha keys | **Environment secrets** (`PREREG_CAPTCHA_*`, etc.) | Hardcoded in `external-dsf.yaml` hook |
@@ -335,13 +335,9 @@ Optional environment variable:
 | `TERRAFORM_APPLY` | ✅ **true** |
 | `ENABLE_RANCHER_IMPORT` | ✅ **true** |
 | `PUBLISH_KUBECONFIG` | ✅ **true** (default) |
-| `GRANT_RANCHER_DEVOPS_ACCESS` | ✅ **true** (default) |
-| `RANCHER_DEVOPS_GROUP` | `DEVOPS` |
-| `RANCHER_DEVOPS_ROLE` | `cluster-owner` |
+| `GRANT_RANCHER_ACCESS` | ✅ **true** (default) |
 
-> **Multi-team Rancher access:** Grants are now configured in `.github/config/rancher-access-grants.json` (JSON array) or per-environment variable `RANCHER_ACCESS_GRANTS`. See [AUTOMATION_IMPROVEMENTS.md](AUTOMATION_IMPROVEMENTS.md).
-
-> **DevOps approval:** Run workflow **Setup environment protection** once per environment so jobs pause for reviewer approval. See [AUTOMATION_IMPROVEMENTS.md](AUTOMATION_IMPROVEMENTS.md).
+Rancher teams/roles are read from `.github/config/rancher-access-grants.json` or environment variable `RANCHER_ACCESS_GRANTS` (JSON array). No per-team workflow inputs.
 
 **Prerequisite:** `TF_WG_CONFIG` must already exist (from Step 3).
 

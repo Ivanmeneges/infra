@@ -2,45 +2,87 @@
 
 ## `rancher-access-grants.json`
 
-Default Rancher cluster RBAC grants applied after `ENABLE_RANCHER_IMPORT=true` in Terraform.
+**Repo-wide defaults** for Rancher cluster RBAC after `ENABLE_RANCHER_IMPORT=true`.
 
-Each object:
+Layers are **merged by `group` name** (environment overrides win):
 
-| Field | Required | Example |
-|-------|----------|---------|
-| `group` | yes | `DEVOPS` |
-| `role` | yes | `cluster-owner`, `cluster-member` |
-| `principal_id` | no | `keycloak_group://DEVOPS` |
-| `group_auth_prefix` | no | `keycloak_group` (used if `principal_id` omitted) |
-| `fix_misbound_user` | no | `true` — repair wrong DEVOPS bindings |
+| Layer | Source | Purpose |
+|-------|--------|---------|
+| 1. Base | `.github/config/rancher-access-grants.json` | DEVOPS = `cluster-owner`; other teams on/off via `enabled` |
+| 2. Env patch | `vars.RANCHER_ACCESS_GRANTS` | Per-env merge: change role, enable/disable any group |
+| 3. DEVOPS shortcuts | `vars.RANCHER_DEVOPS_ROLE`, `vars.RANCHER_DEVOPS_ENABLED` | Quick per-env DEVOPS override |
 
-### Multiple teams example
+### Grant entry fields
+
+| Field | Required | Default | Example |
+|-------|----------|---------|---------|
+| `group` | yes | — | `DEVOPS` |
+| `role` | yes | — | `cluster-owner`, `cluster-member` |
+| `enabled` | no | `true` | `false` skips this group for that layer |
+| `principal_id` | no | built from prefix | `keycloak_group://DEVOPS` |
+| `group_auth_prefix` | no | `keycloak_group` | |
+| `fix_misbound_user` | no | `false` | `true` for DEVOPS repair |
+
+### Default file (DEVOPS owner; others off)
 
 ```json
 [
   {
     "group": "DEVOPS",
     "role": "cluster-owner",
+    "enabled": true,
     "principal_id": "keycloak_group://DEVOPS",
     "fix_misbound_user": true
   },
   {
     "group": "QA",
     "role": "cluster-member",
+    "enabled": false,
     "principal_id": "keycloak_group://QA"
-  },
-  {
-    "group": "DEVELOPERS",
-    "role": "cluster-member",
-    "principal_id": "keycloak_group://DEVELOPERS"
   }
 ]
 ```
 
-### Per-environment override (no workflow input changes)
+### Per-environment: enable QA only
 
-Set GitHub **environment variable** `RANCHER_ACCESS_GRANTS` to a JSON array (same schema).  
-The Terraform workflow uses `vars.RANCHER_ACCESS_GRANTS` when set; otherwise it reads this file.
+**Environment `qajava11` → Variable `RANCHER_ACCESS_GRANTS`:**
+
+```json
+[
+  { "group": "QA", "enabled": true }
+]
+```
+
+**Result for `qajava11`:** DEVOPS `cluster-owner` + QA `cluster-member`.
+
+### Per-environment: change DEVOPS role (override base)
+
+**Option A — patch variable:**
+
+```json
+[{ "group": "DEVOPS", "role": "cluster-member" }]
+```
+
+**Option B — shortcut variable (simpler):**
+
+| Variable | Value |
+|----------|-------|
+| `RANCHER_DEVOPS_ROLE` | `cluster-member` |
+
+DEVOPS keeps `principal_id` / `fix_misbound_user` from base file; only `role` changes.
+
+### Per-environment: disable DEVOPS grant entirely
+
+| Variable | Value |
+|----------|-------|
+| `RANCHER_DEVOPS_ENABLED` | `false` |
+
+### Merge rules
+
+- Matching `group` → override fields **replace** base fields (shallow merge).
+- `enabled: false` → group is **not** granted (skipped).
+- New group in env patch only → added to the plan.
+- Omitted `enabled` → treated as `true`.
 
 ---
 
