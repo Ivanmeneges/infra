@@ -87,7 +87,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -x "$GRANT_SCRIPT" ]] || die "Missing grant script: $GRANT_SCRIPT"
+[[ -f "$GRANT_SCRIPT" ]] || die "Missing grant script: $GRANT_SCRIPT (batch script requires rancher-grant-cluster-access.sh in the same directory)"
+chmod +x "$GRANT_SCRIPT" 2>/dev/null || true
 command -v jq >/dev/null 2>&1 || die "jq is required"
 [[ -n "$RANCHER_URL" ]] || die "--rancher-url is required"
 [[ -n "$RANCHER_TOKEN" ]] || die "--token is required"

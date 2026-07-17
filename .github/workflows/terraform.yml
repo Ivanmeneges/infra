@@ -448,6 +448,14 @@ jobs:
           if command -v git >/dev/null 2>&1 && [ -d "$GITHUB_WORKSPACE/.git" ]; then
             echo "Git checkout: $(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD) ($(git -C "$GITHUB_WORKSPACE" rev-parse --abbrev-ref HEAD))"
           fi
+          SCRIPTS_DIR="$GITHUB_WORKSPACE/.github/scripts"
+          if [ -d "$SCRIPTS_DIR" ]; then
+            echo "Contents of .github/scripts/:"
+            ls -la "$SCRIPTS_DIR" || true
+            chmod +x "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
+          else
+            echo "WARN: directory missing: $SCRIPTS_DIR"
+          fi
           if [ -d "$GITHUB_WORKSPACE/.github/config" ]; then
             echo "Contents of .github/config/:"
             ls -la "$GITHUB_WORKSPACE/.github/config/" || true
@@ -471,7 +479,7 @@ jobs:
           fi
           echo "Using Rancher grants catalog: $GRANTS_FILE"
 
-          if [ -x "$GITHUB_WORKSPACE/.github/scripts/build-rancher-workflow-patch.sh" ]; then
+          if [ -f "$GITHUB_WORKSPACE/.github/scripts/build-rancher-workflow-patch.sh" ]; then
             export WORKFLOW_GRANTS_CATALOG="$GRANTS_FILE"
             echo "Rancher team catalog:"
             jq -r '.[] | "  - \(.group): \(.role) (catalog enabled=\(.enabled // true))"' "$GRANTS_FILE"
@@ -484,9 +492,36 @@ jobs:
           export WORKFLOW_RANCHER_PATCH
 
           echo "Applying Rancher access grants for cluster '$CLUSTER_NAME' ..."
-          BATCH_SCRIPT="$GITHUB_WORKSPACE/.github/scripts/rancher-grant-cluster-access-batch.sh"
-          SINGLE_SCRIPT="$GITHUB_WORKSPACE/.github/scripts/rancher-grant-cluster-access.sh"
-          if [ -x "$BATCH_SCRIPT" ]; then
+          BATCH_SCRIPT="$SCRIPTS_DIR/rancher-grant-cluster-access-batch.sh"
+          SINGLE_SCRIPT="$SCRIPTS_DIR/rancher-grant-cluster-access.sh"
+
+          missing=()
+          for f in \
+            "$SINGLE_SCRIPT" \
+            "$BATCH_SCRIPT" \
+            "$GITHUB_WORKSPACE/.github/scripts/build-rancher-workflow-patch.sh" \
+            "$GITHUB_WORKSPACE/.github/config/rancher-access-grants.json"; do
+            [ -f "$f" ] || missing+=("$f")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "WARN: Some Rancher automation files are missing on branch '$REF_NAME':"
+            printf '  - %s\n' "${missing[@]}"
+            echo "  Run: git checkout origin/Ivanmeneges-patch-kubeconfig -- .github/config .github/scripts/rancher-grant-cluster-access.sh .github/scripts/rancher-grant-cluster-access-batch.sh .github/scripts/build-rancher-workflow-patch.sh .github/scripts/rancher-access-grants.default.json"
+          fi
+
+          if [ ! -f "$SINGLE_SCRIPT" ]; then
+            echo "ERROR: Required script missing: $SINGLE_SCRIPT"
+            echo "  The batch script depends on rancher-grant-cluster-access.sh — add it to branch '$REF_NAME' and push."
+            if command -v git >/dev/null 2>&1 && [ -d "$GITHUB_WORKSPACE/.git" ]; then
+              echo "Tracked under .github/ on this commit:"
+              git -C "$GITHUB_WORKSPACE" ls-files '.github/config/*' '.github/scripts/rancher*' '.github/scripts/build-rancher*' 2>/dev/null || true
+            fi
+            exit 1
+          fi
+          chmod +x "$SINGLE_SCRIPT"
+
+          if [ -f "$BATCH_SCRIPT" ]; then
+            chmod +x "$BATCH_SCRIPT"
             ARGS=(
               --rancher-url "$RANCHER_URL"
               --token "$RANCHER_TOKEN"
@@ -497,7 +532,7 @@ jobs:
               ARGS+=(--default-group-auth-prefix "$RANCHER_GROUP_AUTH_PREFIX")
             fi
             "$BATCH_SCRIPT" "${ARGS[@]}"
-          elif [ -x "$SINGLE_SCRIPT" ]; then
+          else
             echo "WARN: batch script missing — granting DEVOPS cluster-owner only via $SINGLE_SCRIPT"
             DEVOPS_GROUP="${RANCHER_DEVOPS_GROUP:-DEVOPS}"
             SINGLE_ARGS=(
@@ -510,13 +545,6 @@ jobs:
               --fix-misbound-user
             )
             "$SINGLE_SCRIPT" "${SINGLE_ARGS[@]}"
-          else
-            echo "ERROR: Missing Rancher grant scripts on branch '$REF_NAME'."
-            echo "  Merge Ivanmeneges-patch-kubeconfig into this branch, or copy at least:"
-            echo "    .github/scripts/rancher-grant-cluster-access.sh"
-            echo "    .github/scripts/rancher-grant-cluster-access-batch.sh"
-            echo "    .github/scripts/build-rancher-workflow-patch.sh"
-            exit 1
           fi
 
       - name: Terraform Plan
