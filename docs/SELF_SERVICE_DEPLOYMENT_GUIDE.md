@@ -73,7 +73,7 @@ Pick the MOSIP platform version folder (`1.2.0.x` vs `1.2.1.x`) to match your re
 | WireGuard peer allocation | **Workflow:** WireGuard onboard environment | Manual SSH to jump server |
 | `TF_WG_CONFIG`, `CLUSTER_WIREGUARD_WG0/WG1` | Auto-published by wg-onboard | Manual copy to GitHub secrets |
 | Rancher cluster registration | **Terraform:** `ENABLE_RANCHER_IMPORT=true` | Paste import URL in tfvars |
-| Rancher group access (multi-team) | **Terraform:** `GRANT_RANCHER_ACCESS=true` + `rancher-access-grants.json` | Manual Rancher UI |
+| Rancher group access (multi-team) | **Terraform:** `ENABLE_RANCHER_IMPORT=true` + `rancher-access-grants.json` | Manual Rancher UI |
 | `KUBECONFIG` secret | **Terraform:** `PUBLISH_KUBECONFIG=true` | Manual copy from Terraform output |
 | DSF domain names | **Workflow inputs** + env vars (`${domain_name}`) | Search-replace `sandbox.xyz.net` in every DSF |
 | Captcha keys | **Environment secrets** (`PREREG_CAPTCHA_*`, etc.) | Hardcoded in `external-dsf.yaml` hook |
@@ -335,7 +335,6 @@ Optional environment variable:
 | `TERRAFORM_APPLY` | ✅ **true** |
 | `ENABLE_RANCHER_IMPORT` | ✅ **true** |
 | `PUBLISH_KUBECONFIG` | ✅ **true** (default) |
-| `GRANT_RANCHER_ACCESS` | ✅ **true** (default) |
 | `GRANT_GROUP_ACCESS` | ☐ false — check to apply other teams from JSON |
 | `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false — check to grant cluster-owner to a named group |
 | `RANCHER_CLUSTER_OWNER_GROUP` | e.g. `QA` |

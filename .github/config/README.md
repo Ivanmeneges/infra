@@ -19,7 +19,6 @@ Layers are **merged by `group` name** (later layers win):
 
 | Input | Default | What it does |
 |-------|---------|--------------|
-| `GRANT_RANCHER_ACCESS` | ✅ true | Master switch for Rancher RBAC step |
 | `GRANT_GROUP_ACCESS` | ☐ false | When ✅, also apply other teams from JSON (roles + `enabled` per JSON and env `RANCHER_ACCESS_GRANTS`) |
 | `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false | When ✅, grant **cluster-owner** to the group named below |
 | `RANCHER_CLUSTER_OWNER_GROUP` | (empty) | Group name, e.g. `QA` — overrides JSON role; **DEVOPS stays owner too** |
