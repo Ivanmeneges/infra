@@ -106,10 +106,15 @@ JQ_MERGE='
 '
 
 load_base_grants() {
+  local default_file="${SCRIPT_DIR}/rancher-access-grants.default.json"
   if [[ -f "$GRANTS_FILE" ]]; then
     cat "$GRANTS_FILE"
+  elif [[ -f "$default_file" ]]; then
+    log "Grants catalog not found at $GRANTS_FILE — using built-in default ($default_file)"
+    cat "$default_file"
   else
-    printf '%s' '[]'
+    log "No grants catalog; using minimal DEVOPS cluster-owner default"
+    printf '%s' '[{"group":"DEVOPS","role":"cluster-owner","enabled":true,"principal_id":"keycloak_group://DEVOPS","fix_misbound_user":true}]'
   fi
 }
 
