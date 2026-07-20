@@ -19,13 +19,13 @@ Layers are **merged by `group` name** (later layers win):
 
 | Input | Default | What it does |
 |-------|---------|--------------|
-| `GRANT_GROUP_ACCESS` | ☐ false | When ✅, also apply other teams from JSON (roles + `enabled` per JSON and env `RANCHER_ACCESS_GRANTS`) |
+| `GRANT_GROUP_ACCESS` | ☐ false | When ✅, grant **all teams** in JSON (roles from file; overrides `enabled: false` defaults) |
 | `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false | When ✅, grant **cluster-owner** to the group named below |
 | `RANCHER_CLUSTER_OWNER_GROUP` | (empty) | Group name, e.g. `QA` — overrides JSON role; **DEVOPS stays owner too** |
 
-**Typical new env (DEVOPS only):** leave `GRANT_GROUP_ACCESS` unchecked.
+**DEVOPS + all JSON teams on one run:** check `GRANT_GROUP_ACCESS` (teams use roles from JSON, e.g. `rt-jdzrj`).
 
-**DEVOPS + QA member from JSON:** enable QA in JSON or env `RANCHER_ACCESS_GRANTS`, then check `GRANT_GROUP_ACCESS`.
+**DEVOPS only:** leave `GRANT_GROUP_ACCESS` unchecked (non-DEVOPS entries stay off even if listed in JSON).
 
 **DEVOPS + QA both owners:** check `RANCHER_CLUSTER_OWNER_GROUP_ENABLED`, set `RANCHER_CLUSTER_OWNER_GROUP` = `QA` (with or without `GRANT_GROUP_ACCESS`).
 
