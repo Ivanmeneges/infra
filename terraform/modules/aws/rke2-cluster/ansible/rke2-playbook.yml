@@ -635,7 +635,15 @@
       become_user: ubuntu
       environment:
         KUBECONFIG: "/home/ubuntu/.kube/{{ inventory_hostname }}.yaml"
-      ignore_errors: yes
+      register: rancher_import_result
+      failed_when: rancher_import_result.rc != 0
+
+    - name: Report Rancher import result
+      debug:
+        msg: "Rancher import command exit={{ rancher_import_result.rc | default('skipped') }} stdout={{ rancher_import_result.stdout | default('') }}"
+      when:
+        - enable_rancher_import | bool
+        - rancher_import_result is defined
 
     - name: Skip Rancher import (already imported)
       debug:

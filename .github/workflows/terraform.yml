@@ -470,6 +470,7 @@ jobs:
 
       - name: Publish KUBECONFIG from Rancher
         if: ${{ inputs.TERRAFORM_COMPONENT == 'infra' && inputs.TERRAFORM_APPLY == true && inputs.PUBLISH_KUBECONFIG == true && steps.apply.outcome == 'success' }}
+        continue-on-error: true
         env:
           RANCHER_URL: ${{ secrets.RANCHER_API_URL }}
           RANCHER_TOKEN: ${{ secrets.RANCHER_API_TOKEN }}
@@ -477,10 +478,11 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GH_INFRA_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          MAX_ATTEMPTS: "90"
-          SLEEP_SECONDS: "10"
-          KUBECONFIG_FETCH_ATTEMPTS: "5"
-          KUBECONFIG_FETCH_SLEEP: "30"
+          # rancher-fetch-kubeconfig.sh waits for cluster active (RKE2 + import often needs 20-40 min)
+          MAX_ATTEMPTS: "180"
+          SLEEP_SECONDS: "15"
+          KUBECONFIG_FETCH_ATTEMPTS: "3"
+          KUBECONFIG_FETCH_SLEEP: "60"
         run: |
           if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
             echo "Skipping KUBECONFIG publish: RANCHER_API_URL / RANCHER_API_TOKEN not set for environment '$REF_NAME'"
