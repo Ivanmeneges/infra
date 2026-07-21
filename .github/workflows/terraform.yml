@@ -131,11 +131,19 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ github.ref }}
           fetch-depth: 0  # Full history needed for rebase
           token: ${{ secrets.GH_INFRA_PAT }}
 
       - name: Ensure workflow scripts are executable
-        run: chmod +x .github/scripts/*.sh
+        run: |
+          shopt -s nullglob
+          scripts=("$GITHUB_WORKSPACE/.github/scripts/"*.sh)
+          if ((${#scripts[@]} == 0)); then
+            echo "ERROR: No scripts found under $GITHUB_WORKSPACE/.github/scripts/"
+            exit 1
+          fi
+          chmod +x "${scripts[@]}"
 
       - name: Check for required implementation directory
         run: |
