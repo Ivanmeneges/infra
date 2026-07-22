@@ -617,24 +617,6 @@
       debug:
         msg: "{{ cluster_status.stdout_lines }}"
 
-    - name: Set effective Rancher import command
-      set_fact:
-        effective_rancher_import_cmd: >-
-          {{ lookup('env', 'EFFECTIVE_RANCHER_IMPORT_CMD')
-             | default(rancher_import_url | trim | regex_replace('^\"|\"$', ''), true)
-             | trim }}
-        rancher_import_source: >-
-          {{ lookup('env', 'RANCHER_IMPORT_SOURCE')
-             | default('inventory URL (no RANCHER_API_* env on runner)', true) }}
-      when: enable_rancher_import | bool
-      run_once: true
-
-    - name: Log Rancher import command source
-      debug:
-        msg: "Rancher import will use {{ rancher_import_source | default('unknown') }}"
-      when: enable_rancher_import | bool
-      run_once: true
-
     - name: Check if Rancher import already done
       shell: kubectl get namespace cattle-system
       become_user: ubuntu
@@ -646,7 +628,7 @@
       changed_when: false
 
     - name: Execute Rancher import (first time only)
-      shell: "{{ effective_rancher_import_cmd }}"
+      shell: "{{ rancher_import_url }}"
       when: 
         - enable_rancher_import | bool
         - cattle_system_check.rc != 0
@@ -658,7 +640,7 @@
 
     - name: Report Rancher import result
       debug:
-        msg: "Rancher import ({{ rancher_import_source | default('unknown') }}) exit={{ rancher_import_result.rc | default('skipped') }} stdout={{ rancher_import_result.stdout | default('') }}"
+        msg: "Rancher import command exit={{ rancher_import_result.rc | default('skipped') }} stdout={{ rancher_import_result.stdout | default('') }}"
       when:
         - enable_rancher_import | bool
         - rancher_import_result is defined

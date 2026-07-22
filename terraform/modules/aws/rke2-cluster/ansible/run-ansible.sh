@@ -156,40 +156,6 @@ echo "Ansible Version:"
 ansible-playbook --version
 echo ""
 
-# Mint a fresh Rancher import command on the runner before the playbook reaches
-# kubectl apply. Plan-time tokens from the workflow step are often stale by then.
-if grep -Eq 'enable_rancher_import:[[:space:]]*true' "$INVENTORY_FILE" 2>/dev/null \
-  && [ -n "${RANCHER_API_URL:-}" ] && [ -n "${RANCHER_API_TOKEN:-}" ]; then
-  REGISTER_SCRIPT="${GITHUB_WORKSPACE:-}/.github/scripts/rancher-register-cluster.sh"
-  RANCHER_NAME="${RANCHER_CLUSTER_NAME:-}"
-  if [ -z "$RANCHER_NAME" ]; then
-    RANCHER_NAME="$(grep -E '^[[:space:]]*cluster_name:' "$INVENTORY_FILE" | head -1 | sed -E 's/^[[:space:]]*cluster_name:[[:space:]]*//' | tr -d '"')"
-  fi
-  if [ ! -f "$REGISTER_SCRIPT" ]; then
-    echo "ERROR: Rancher register script not found: $REGISTER_SCRIPT" >&2
-    echo "Set GITHUB_WORKSPACE on the runner or run from a checkout that includes .github/scripts/." >&2
-    exit 1
-  fi
-  chmod +x "$REGISTER_SCRIPT" 2>/dev/null || true
-  echo "Refreshing Rancher import URL for cluster '${RANCHER_NAME}' ..."
-  if ! IMPORT_LINE="$("$REGISTER_SCRIPT" \
-      --rancher-url "$RANCHER_API_URL" \
-      --token "$RANCHER_API_TOKEN" \
-      --cluster-name "$RANCHER_NAME" | tail -n1)"; then
-    echo "ERROR: rancher-register-cluster.sh failed while minting a fresh import URL" >&2
-    exit 1
-  fi
-  INNER="${IMPORT_LINE#\"}"
-  INNER="${INNER%\"}"
-  if [ -z "$INNER" ]; then
-    echo "ERROR: Rancher register script returned an empty import command" >&2
-    exit 1
-  fi
-  export EFFECTIVE_RANCHER_IMPORT_CMD="$INNER"
-  export RANCHER_IMPORT_SOURCE="fresh API token"
-  echo "Rancher import will use fresh API token (minted at $(date -u +%Y-%m-%dT%H:%M:%SZ))"
-fi
-
 echo "🔥 STARTING PLAYBOOK EXECUTION WITH FULL DEBUGGING:"
 echo "=================================================="
 echo "This will show every step, task, and connection detail..."
