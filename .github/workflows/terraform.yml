@@ -324,10 +324,32 @@ jobs:
           RANCHER_CLUSTER_NAME_INPUT: ${{ inputs.RANCHER_CLUSTER_NAME }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
+            echo "ERROR: RANCHER_API_URL and RANCHER_API_TOKEN must be set for environment '$REF_NAME'"
+            exit 1
+          fi
           CLUSTER_NAME="${RANCHER_CLUSTER_NAME_INPUT:-$REF_NAME}"
-          "$GITHUB_WORKSPACE/.github/scripts/mint-rancher-import-tfvars.sh" \
-            --cluster-name "$CLUSTER_NAME" \
-            --message "plan-time placeholder"
+          echo "Registering cluster '$CLUSTER_NAME' in Rancher (plan-time placeholder)..."
+          IMPORT_CMD="$("$GITHUB_WORKSPACE/.github/scripts/rancher-register-cluster.sh" \
+            --rancher-url "$RANCHER_URL" \
+            --token "$RANCHER_TOKEN" \
+            --cluster-name "$CLUSTER_NAME" | tail -n1)"
+          IMPORT_INNER="${IMPORT_CMD#\"}"
+          IMPORT_INNER="${IMPORT_INNER%\"}"
+          export IMPORT_INNER
+          python3 <<'PY' > rancher-override.tfvars
+          import os
+          
+          inner = os.environ["IMPORT_INNER"]
+          quoted = '"' + inner + '"'
+          hcl = '"' + quoted.replace('"', '\\"') + '"'
+          print("enable_rancher_import = true")
+          print(f"rancher_import_url    = {hcl}")
+          PY
+          echo "Generated rancher-override.tfvars:"
+          cat rancher-override.tfvars
+          echo "RANCHER_TFVARS_FILE=rancher-override.tfvars" >> "$GITHUB_ENV"
+          echo "Rancher import URL minted for: $CLUSTER_NAME"
 
       - name: Terraform Plan
         id: plan
@@ -347,10 +369,31 @@ jobs:
           RANCHER_CLUSTER_NAME_INPUT: ${{ inputs.RANCHER_CLUSTER_NAME }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
+            echo "ERROR: RANCHER_API_URL and RANCHER_API_TOKEN must be set for environment '$REF_NAME'"
+            exit 1
+          fi
           CLUSTER_NAME="${RANCHER_CLUSTER_NAME_INPUT:-$REF_NAME}"
-          "$GITHUB_WORKSPACE/.github/scripts/mint-rancher-import-tfvars.sh" \
-            --cluster-name "$CLUSTER_NAME" \
-            --message "refreshed immediately before apply"
+          echo "Refreshing Rancher import URL for cluster '$CLUSTER_NAME' immediately before apply..."
+          IMPORT_CMD="$("$GITHUB_WORKSPACE/.github/scripts/rancher-register-cluster.sh" \
+            --rancher-url "$RANCHER_URL" \
+            --token "$RANCHER_TOKEN" \
+            --cluster-name "$CLUSTER_NAME" | tail -n1)"
+          IMPORT_INNER="${IMPORT_CMD#\"}"
+          IMPORT_INNER="${IMPORT_INNER%\"}"
+          export IMPORT_INNER
+          python3 <<'PY' > rancher-override.tfvars
+          import os
+          
+          inner = os.environ["IMPORT_INNER"]
+          quoted = '"' + inner + '"'
+          hcl = '"' + quoted.replace('"', '\\"') + '"'
+          print("enable_rancher_import = true")
+          print(f"rancher_import_url    = {hcl}")
+          PY
+          echo "Refreshed rancher-override.tfvars (apply will use this URL in Ansible inventory):"
+          cat rancher-override.tfvars
+          echo "RANCHER_TFVARS_FILE=rancher-override.tfvars" >> "$GITHUB_ENV"
 
       - name: Terraform Apply
         id: apply
