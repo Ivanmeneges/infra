@@ -17,6 +17,11 @@ These scripts handle complex operations that would otherwise make workflow files
 | `setup-gpg.sh` | Configure GPG environment for encryption | terraform.yml, terraform-destroy.yml | Active |
 | `generate-pg-secrets.sh` | Generate PostgreSQL secrets (legacy) | N/A | Legacy |
 | `cleanup-state-locking.sh` | Clean up DynamoDB state locks | terraform-destroy.yml | Active |
+| `rancher-register-cluster.sh` | Mint Rancher cluster import URL via API | terraform.yml | Active |
+| `rancher-fetch-kubeconfig.sh` | Wait for cluster active and fetch kubeconfig | terraform.yml | Active |
+| `rancher-grant-cluster-access.sh` | Grant one team RBAC binding on a cluster | terraform.yml | Active |
+| `rancher-grant-cluster-access-batch.sh` | Apply multi-team grants from JSON catalog | terraform.yml | Active |
+| `build-rancher-workflow-patch.sh` | Merge workflow UI inputs into grants catalog | terraform.yml | Active |
 | `test-*.sh` | Various testing and validation scripts | Manual testing | Active |
 | `validate-workflow-integration.sh` | Validate workflow integration | Manual testing | Active |
 | `setup-s3-backend.sh` | Empty placeholder | N/A | Placeholder |
@@ -131,6 +136,44 @@ These scripts handle complex operations that would otherwise make workflow files
 **Reason**: PostgreSQL configuration now handled via Terraform variables (`enable_postgresql_setup`) 
 **Replacement**: Configure PostgreSQL in `terraform/implementations/{cloud}/{component}/{cloud}.tfvars`
 
+## Rancher automation scripts
+
+Used when `terraform.yml` runs with `ENABLE_RANCHER_IMPORT: true` on the **`infra`** component.
+
+### rancher-register-cluster.sh
+
+**Purpose**: Find or create an imported cluster in Rancher and print the `kubectl apply -f https://…/v3/import/….yaml` command for Terraform/Ansible.
+
+**Usage**:
+```bash
+./rancher-register-cluster.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$RANCHER_TOKEN" \
+  --cluster-name "$CLUSTER_NAME"
+```
+
+The workflow calls this script twice: before plan (placeholder tfvars) and again immediately before apply (fresh token).
+
+### rancher-fetch-kubeconfig.sh
+
+**Purpose**: Poll until the Rancher cluster state is `active`, then return kubeconfig YAML on stdout.
+
+**Usage**:
+```bash
+./rancher-fetch-kubeconfig.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$RANCHER_TOKEN" \
+  --cluster-name "$CLUSTER_NAME"
+```
+
+Environment variables `MAX_ATTEMPTS` and `SLEEP_SECONDS` control the wait loop.
+
+### rancher-grant-cluster-access-batch.sh
+
+**Purpose**: Apply team RBAC grants from `.github/config/rancher-access-grants.json`, merged with workflow inputs (`GRANT_GROUP_ACCESS`, optional cluster-owner group).
+
+**Catalog file**: `.github/config/rancher-access-grants.json` — DEVOPS `cluster-owner` is always applied; other teams follow `enabled` flags unless overridden by repository variables.
+
 ## Placeholder Scripts
 
 Some scripts are empty placeholders for future functionality:
@@ -145,7 +188,10 @@ Some scripts are empty placeholders for future functionality:
 2. `decrypt-state.sh` - Decrypt existing state files
 3. `configure-backend.sh` - Generate backend configuration
 4. `setup-cloud-storage.sh` - Create remote storage (if remote backend)
-5. `encrypt-state.sh` - Encrypt state files after operations
+5. `rancher-register-cluster.sh` - Mint import URL (plan + pre-apply refresh, when enabled)
+6. `rancher-grant-cluster-access-batch.sh` - Multi-team Rancher RBAC (after successful apply)
+7. `rancher-fetch-kubeconfig.sh` - Fetch kubeconfig and publish environment secret
+8. `encrypt-state.sh` - Encrypt state files after operations
 
 **terraform-destroy.yml workflow uses these scripts**:
 1. `setup-gpg.sh` - Configure GPG for state decryption

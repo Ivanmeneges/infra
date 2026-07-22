@@ -150,9 +150,19 @@ graph TD
  PLAN --> DECISION{Apply or Plan Only?}
  
  DECISION -->|Plan Only| OUTPUT[Show Plan Output]
- DECISION -->|Apply| APPLY[terraform apply]
+ DECISION -->|Apply| RANCHER_REFRESH{infra + Rancher import?}
+ RANCHER_REFRESH -->|Yes| REFRESH[Refresh import URL]
+ RANCHER_REFRESH -->|No| APPLY[terraform apply]
+ REFRESH --> APPLY
  
  APPLY --> ENCRYPT[Encrypt State with GPG]
+ APPLY --> RANCHER_GRANT{infra + Rancher import?}
+ RANCHER_GRANT -->|Yes| GRANT[Grant multi-team access]
+ RANCHER_GRANT -->|No| ENCRYPT
+ GRANT --> KUBECONFIG{Publish KUBECONFIG?}
+ KUBECONFIG -->|Yes| PUBLISH[Publish KUBECONFIG secret]
+ KUBECONFIG -->|No| ENCRYPT
+ PUBLISH --> ENCRYPT
  ENCRYPT --> SUCCESS[Deployment Complete]
  OUTPUT --> COMPLETE[Workflow Complete]
  SUCCESS --> COMPLETE
@@ -238,6 +248,56 @@ REMOTE_BACKEND_CONFIG: aws:bucket-name:region
 
 **Note**: PostgreSQL configuration is set in Terraform `.tfvars` files, not as workflow parameters.
 
+### Rancher automation (`infra` component only)
+
+When deploying the **`infra`** component with **`ENABLE_RANCHER_IMPORT: true`**, the workflow automates cluster registration, RBAC, and kubeconfig publishing. No manual Rancher UI steps are required if the environment secrets are configured.
+
+#### Workflow inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ENABLE_RANCHER_IMPORT` | `false` | Register/import the cluster in Rancher via API during apply |
+| `RANCHER_CLUSTER_NAME` | branch/env name | Rancher cluster name (e.g. `test` when branch is `dev1`) |
+| `PUBLISH_KUBECONFIG` | `true` | After apply, fetch kubeconfig from Rancher and set the `KUBECONFIG` environment secret |
+| `GRANT_GROUP_ACCESS` | `false` | Grant additional teams from `.github/config/rancher-access-grants.json` |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | `false` | Grant an extra group `cluster-owner` (DEVOPS remains owner) |
+| `RANCHER_CLUSTER_OWNER_GROUP` | `''` | Group name for the optional cluster-owner override (e.g. `QA`) |
+
+#### Execution order (Rancher-enabled `infra` apply)
+
+```
+Generate Rancher import URL (plan-time) → Terraform Plan
+  → Refresh Rancher import URL (immediately before apply)
+  → Terraform Apply (Ansible runs kubectl apply with fresh URL)
+  → Grant Rancher cluster access (multi-team)
+  → Publish KUBECONFIG from Rancher
+```
+
+The import URL is minted twice on purpose: once for plan validation, and again right before apply so the registration token is not stale (~15–20 minutes can pass between plan and Ansible import).
+
+#### Required environment secrets (per GitHub Environment, e.g. `dev1`)
+
+| Secret | Purpose |
+|--------|---------|
+| `RANCHER_API_URL` | Rancher base URL (e.g. `https://rancher.example.mosip.net`) |
+| `RANCHER_API_TOKEN` | Scoped Rancher API bearer token |
+| `GH_INFRA_PAT` | Git push + publishing `KUBECONFIG` via `gh secret set` |
+
+Optional repository **variables** can override team roles/enabled flags (see `.github/config/rancher-access-grants.json`).
+
+#### Team access catalog
+
+Default teams in `.github/config/rancher-access-grants.json`:
+
+| Group | Default role | Default enabled |
+|-------|--------------|-----------------|
+| DEVOPS | cluster-owner | always (workflow applies regardless of `GRANT_GROUP_ACCESS`) |
+| QA, DEV | rt-jdzrj | off until enabled via JSON or env vars |
+| PM, PO, BA, TL+ARCHITECT | rt-rgcq7 | off |
+| AUTOMATION | rt-89ntg | off |
+
+Set `GRANT_GROUP_ACCESS: true` to apply enabled teams from the catalog after a successful apply.
+
 ## Security & Access Control
 
 ### Required GitHub Secrets
@@ -278,6 +338,8 @@ SLACK_WEBHOOK_URL: https://hooks.slack.com/services/...
 
 ### Security Best Practices
 - **GPG encryption**: All state files encrypted before commit
+- **Checkout credentials**: `persist-credentials: false` on checkout; git push uses an explicit remote URL with `GH_INFRA_PAT` only in the commit step
+- **WireGuard config**: Read from `TF_WG_CONFIG` environment variable (never expand secrets directly in shell scripts)
 - **Least privilege access**: IAM roles with minimal required permissions
 - **Secret rotation**: Regular rotation of access keys and GPG keys
 - **Audit logging**: CloudTrail/Activity logs enabled for all operations

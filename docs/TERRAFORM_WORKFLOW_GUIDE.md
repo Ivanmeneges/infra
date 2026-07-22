@@ -57,6 +57,49 @@ If Terraform Apply = ☐ (unchecked - dry run)
 → Rancher Import setting is ignored
 ```
 
+## Rancher automation (`infra` component)
+
+Enable **`ENABLE_RANCHER_IMPORT`** when deploying the **`infra`** component to register the RKE2 cluster in Rancher without manual UI steps.
+
+### Workflow inputs
+
+| Input | Default | When to use |
+|-------|---------|-------------|
+| `ENABLE_RANCHER_IMPORT` | `false` | Set `true` for managed clusters in Rancher |
+| `RANCHER_CLUSTER_NAME` | branch name | Override when Rancher name differs from branch (e.g. branch `dev1`, cluster `test`) |
+| `PUBLISH_KUBECONFIG` | `true` | Auto-publish `KUBECONFIG` to the GitHub Environment secret after apply |
+| `GRANT_GROUP_ACCESS` | `false` | Set `true` to grant QA/DEV/PM/etc. from `.github/config/rancher-access-grants.json` |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | `false` | Optional extra `cluster-owner` group (DEVOPS always gets owner) |
+| `RANCHER_CLUSTER_OWNER_GROUP` | `''` | Group name when owner override is enabled |
+
+### What happens during apply
+
+1. **Plan-time**: Workflow mints an import URL and writes `rancher-override.tfvars` (valid shape for `terraform plan`).
+2. **Pre-apply refresh**: Import URL is minted again immediately before `terraform apply` (avoids stale tokens).
+3. **Ansible import**: During apply, RKE2 playbook runs `kubectl apply -f …/v3/import/….yaml` on the control plane.
+4. **Grants**: After successful apply, multi-team RBAC is applied (`DEVOPS` always; others if `GRANT_GROUP_ACCESS=true`).
+5. **Kubeconfig**: If `PUBLISH_KUBECONFIG=true`, workflow waits for cluster **Active** and sets the environment `KUBECONFIG` secret.
+
+### Required GitHub Environment secrets
+
+Configure on the target environment (same name as branch, e.g. `dev1`):
+
+| Secret | Example |
+|--------|---------|
+| `RANCHER_API_URL` | `https://rancher.dev1.example.mosip.net` |
+| `RANCHER_API_TOKEN` | `token-xxxxx:yyyy…` |
+| `GH_INFRA_PAT` | PAT with repo + environment secrets access |
+
+### Troubleshooting Rancher import
+
+| Symptom | Likely cause | Check |
+|---------|--------------|-------|
+| Cluster stuck **Pending** in Rancher | Import failed (401 / stale token) | Apply logs: `Execute Rancher import`; control plane: `kubectl get ns cattle-system` |
+| Kubeconfig publish timeout | Import not complete or agent not ready | Re-run after cluster shows **Active**; import step must exit 0 |
+| Grants succeed but cluster Pending | Grants do not require Active state | Fix import first; grants are independent |
+
+See also: [Workflow README](../.github/workflows/README.md#rancher-automation-infra-component-only) and [Scripts README](../.github/scripts/README.md#rancher-automation-scripts).
+
 ## Backend Configuration Options
 
 - **`local`**: GPG-encrypted local state storage (recommended for development and small teams)

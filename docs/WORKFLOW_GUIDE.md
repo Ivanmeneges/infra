@@ -38,24 +38,33 @@ Your Repository
 - ✅ **Checked** → Terraform will create actual AWS servers
 - ☐ **Unchecked** → Terraform only shows you the plan (no changes made)
 
-#### Rancher Import Option
+#### Rancher automation (`infra` component)
 
 | Setting | What It Does | When to Use |
 |---------|--------------|-------------|
-| **True** | Automatically imports cluster into Rancher UI | If you want centralized cluster management |
-| **False** | Cluster runs independently | For standalone deployments |
+| **ENABLE_RANCHER_IMPORT = True** | Registers cluster in Rancher and runs `kubectl apply` import during apply | Centralized cluster management |
+| **ENABLE_RANCHER_IMPORT = False** | Cluster runs without Rancher registration | Standalone / no Rancher |
+| **GRANT_GROUP_ACCESS = True** | Grants QA, DEV, PM, etc. from team catalog | Multi-team self-service access |
+| **PUBLISH_KUBECONFIG = True** | Writes `KUBECONFIG` to GitHub Environment secret | Helmsman / follow-on workflows |
 
 **Relationship with Terraform Apply:**
 ```
-If Terraform Apply = ✅ AND Rancher Import = True
- → Cluster is deployed AND imported into Rancher
+If Terraform Apply = ✅ AND ENABLE_RANCHER_IMPORT = True
+ → Cluster deployed → fresh import URL → kubectl apply on control plane
+ → (optional) multi-team grants → (optional) KUBECONFIG published
 
-If Terraform Apply = ✅ AND Rancher Import = False
- → Cluster is deployed but NOT imported
+If Terraform Apply = ✅ AND ENABLE_RANCHER_IMPORT = False
+ → Cluster deployed, no Rancher steps
 
 If Terraform Apply = ☐ (unchecked)
- → Dry run only, nothing happens (Rancher import setting is ignored)
+ → Plan only; Rancher settings ignored
 ```
+
+**Import URL timing:** The workflow mints the import URL before plan, then **refreshes it immediately before apply**. This prevents stale registration tokens (401 on `/v3/import/`) when plan and apply are many minutes apart.
+
+**Required secrets** (GitHub Environment matching branch name): `RANCHER_API_URL`, `RANCHER_API_TOKEN`, `GH_INFRA_PAT`.
+
+**Team catalog:** `.github/config/rancher-access-grants.json` — DEVOPS always receives `cluster-owner`; enable other teams via `GRANT_GROUP_ACCESS` or repository variables.
 
 ---
 
@@ -165,6 +174,10 @@ If Terraform Apply = ☐ (unchecked)
  | **Profile** | `esignet-standalone` or `mosip` | `esignet` | Selects tfvars and cluster size — see below |
  | **Backend** | `local` or `s3` | `local` | State storage location |
  | **Terraform apply** | ✅ | ✅ | Check to deploy, uncheck for dry run |
+ | **Enable Rancher import** | ✅ or ☐ | ✅ for managed clusters | Needs `RANCHER_API_*` environment secrets |
+ | **Rancher cluster name** | e.g. `test` | optional | Defaults to branch/env name |
+ | **Grant group access** | ✅ or ☐ | ✅ for multi-team | Uses `rancher-access-grants.json` |
+ | **Publish kubeconfig** | ✅ | ✅ | Sets `KUBECONFIG` environment secret |
 
  **Profile options for `infra` component:**
 
@@ -182,11 +195,11 @@ If Terraform Apply = ☐ (unchecked)
 
 6. **Monitor Progress** (This takes 15-30 minutes)
  ```
- → Creating Kubernetes cluster
- → Installing RKE2
- → Configuring networking
- → Setting up PostgreSQL (if enabled)
- → Importing to Rancher (if enabled)
+ → Generate/refresh Rancher import URL (if enabled)
+ → Terraform plan / apply
+ → RKE2 + Ansible (Rancher kubectl import on control plane)
+ → Grant Rancher team access (if enabled)
+ → Publish KUBECONFIG (if enabled)
  ```
 
 #### What You Should See
@@ -194,11 +207,13 @@ If Terraform Apply = ☐ (unchecked)
 **Success Indicators:**
 - ✅ Kubernetes cluster created
 - ✅ Multiple nodes visible in AWS EC2
-- ✅ KUBECONFIG file generated
+- ✅ Rancher cluster **Active** (if import enabled)
+- ✅ `KUBECONFIG` environment secret updated (if publish enabled)
 - ✅ PostgreSQL running (if enabled)
 
 **Outputs to Save:**
-- KUBECONFIG file location
+- KUBECONFIG (GitHub Environment secret or Rancher UI)
+- Rancher cluster ID (e.g. `c-bwtzx`)
 - Cluster endpoint URL
 - Node IP addresses
 
@@ -564,6 +579,21 @@ Backend: [local | s3]
 ☐ Unchecked → terraform plan → Shows what WOULD happen → No changes
 ✅ Checked → terraform apply → Actually creates resources → Real changes
 ```
+
+---
+
+#### Rancher inputs (`infra` component only)
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ENABLE_RANCHER_IMPORT` | `false` | Auto-register cluster via Rancher API |
+| `RANCHER_CLUSTER_NAME` | branch name | Name shown in Rancher UI |
+| `PUBLISH_KUBECONFIG` | `true` | Publish kubeconfig to environment secret |
+| `GRANT_GROUP_ACCESS` | `false` | Apply team grants from JSON catalog |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | `false` | Extra cluster-owner group |
+| `RANCHER_CLUSTER_OWNER_GROUP` | `''` | Group for optional owner override |
+
+Secrets (per GitHub **Environment**): `RANCHER_API_URL`, `RANCHER_API_TOKEN`, `GH_INFRA_PAT`.
 
 ---
 
