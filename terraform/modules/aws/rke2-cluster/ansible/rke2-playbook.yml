@@ -617,61 +617,16 @@
       debug:
         msg: "{{ cluster_status.stdout_lines }}"
 
-    - name: Resolve Rancher cluster name for API refresh
+    - name: Set effective Rancher import command
       set_fact:
-        rancher_api_cluster_name: "{{ lookup('env', 'RANCHER_CLUSTER_NAME') | default(cluster_name, true) | trim }}"
+        effective_rancher_import_cmd: >-
+          {{ lookup('env', 'EFFECTIVE_RANCHER_IMPORT_CMD')
+             | default(rancher_import_url | trim | regex_replace('^\"|\"$', ''), true)
+             | trim }}
+        rancher_import_source: >-
+          {{ lookup('env', 'RANCHER_IMPORT_SOURCE')
+             | default('inventory URL (no RANCHER_API_* env on runner)', true) }}
       when: enable_rancher_import | bool
-      run_once: true
-
-    - name: Mint fresh Rancher import command via API (localhost)
-      delegate_to: localhost
-      become: false
-      shell: |
-        set -euo pipefail
-        SCRIPT="${RANCHER_REGISTER_SCRIPT}"
-        if [ ! -f "$SCRIPT" ]; then
-          echo "Rancher register script not found: $SCRIPT" >&2
-          exit 1
-        fi
-        chmod +x "$SCRIPT" 2>/dev/null || true
-        "$SCRIPT" \
-          --rancher-url "$RANCHER_URL" \
-          --token "$RANCHER_TOKEN" \
-          --cluster-name "$CLUSTER_NAME" \
-          | tail -n1
-      environment:
-        RANCHER_URL: "{{ lookup('env', 'RANCHER_API_URL') }}"
-        RANCHER_TOKEN: "{{ lookup('env', 'RANCHER_API_TOKEN') }}"
-        CLUSTER_NAME: "{{ rancher_api_cluster_name }}"
-        RANCHER_REGISTER_SCRIPT: "{{ lookup('env', 'GITHUB_WORKSPACE') | default('', true) | trim }}/.github/scripts/rancher-register-cluster.sh"
-      register: fresh_rancher_import
-      changed_when: false
-      no_log: true
-      when:
-        - enable_rancher_import | bool
-        - lookup('env', 'RANCHER_API_URL') | default('', true) | length > 0
-        - lookup('env', 'RANCHER_API_TOKEN') | default('', true) | length > 0
-      failed_when: fresh_rancher_import.rc != 0
-      run_once: true
-
-    - name: Set effective Rancher import command (fresh API token)
-      set_fact:
-        effective_rancher_import_cmd: "{{ fresh_rancher_import.stdout | trim | regex_replace('^\"|\"$', '') }}"
-        rancher_import_source: "fresh API token"
-      when:
-        - enable_rancher_import | bool
-        - fresh_rancher_import is defined
-        - fresh_rancher_import.rc == 0
-        - fresh_rancher_import.stdout | trim | length > 0
-      run_once: true
-
-    - name: Set effective Rancher import command (inventory fallback)
-      set_fact:
-        effective_rancher_import_cmd: "{{ rancher_import_url | trim | regex_replace('^\"|\"$', '') }}"
-        rancher_import_source: "inventory URL (no RANCHER_API_* env on runner)"
-      when:
-        - enable_rancher_import | bool
-        - effective_rancher_import_cmd is not defined
       run_once: true
 
     - name: Log Rancher import command source

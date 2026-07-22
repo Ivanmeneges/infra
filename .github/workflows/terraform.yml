@@ -371,7 +371,8 @@ jobs:
       - name: Terraform Apply
         id: apply
         env:
-          # Ansible mints a fresh import URL immediately before kubectl apply (plan-time URL may be stale).
+          # run-ansible.sh mints a fresh import URL before kubectl apply (plan-time URL may be stale).
+          GITHUB_WORKSPACE: ${{ github.workspace }}
           RANCHER_API_URL: ${{ inputs.ENABLE_RANCHER_IMPORT == true && secrets.RANCHER_API_URL || '' }}
           RANCHER_API_TOKEN: ${{ inputs.ENABLE_RANCHER_IMPORT == true && secrets.RANCHER_API_TOKEN || '' }}
           RANCHER_CLUSTER_NAME: ${{ inputs.RANCHER_CLUSTER_NAME || github.ref_name }}
