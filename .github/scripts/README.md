@@ -227,6 +227,11 @@ graph TD
 ├── decrypt-state.sh # GPG state decryption
 ├── setup-gpg.sh # GPG environment setup
 ├── cleanup-state-locking.sh # State lock cleanup
+├── rancher-register-cluster.sh # Mint Rancher import URL
+├── rancher-fetch-kubeconfig.sh # Fetch kubeconfig when cluster active
+├── rancher-grant-cluster-access.sh # Single-team Rancher RBAC grant
+├── rancher-grant-cluster-access-batch.sh # Multi-team grants from JSON
+├── build-rancher-workflow-patch.sh # Merge workflow UI into grant catalog
 ├── generate-pg-secrets.sh # Legacy PostgreSQL secrets
 ├── test-infrastructure.sh # Comprehensive testing
 ├── validate-workflow-integration.sh # Workflow validation

@@ -348,8 +348,7 @@ jobs:
           print("enable_rancher_import = true")
           print(f"rancher_import_url    = {hcl}")
           PY
-          echo "Generated rancher-override.tfvars:"
-          cat rancher-override.tfvars
+          echo "Generated rancher-override.tfvars (content redacted)"
           echo "RANCHER_TFVARS_FILE=rancher-override.tfvars" >> "$GITHUB_ENV"
           echo "Rancher import URL minted for: $CLUSTER_NAME"
 
@@ -394,8 +393,7 @@ jobs:
           print("enable_rancher_import = true")
           print(f"rancher_import_url    = {hcl}")
           PY
-          echo "Refreshed rancher-override.tfvars (apply will use this URL in Ansible inventory):"
-          cat rancher-override.tfvars
+          echo "Refreshed rancher-override.tfvars (apply will use this URL in Ansible inventory; content redacted)"
           echo "RANCHER_TFVARS_FILE=rancher-override.tfvars" >> "$GITHUB_ENV"
 
       - name: Terraform Apply
@@ -434,7 +432,7 @@ jobs:
 
           GRANTS_FILE="$GITHUB_WORKSPACE/.github/config/rancher-access-grants.json"
           DEFAULT_GRANTS_FILE="$GITHUB_WORKSPACE/.github/scripts/rancher-access-grants.default.json"
-          BUILTIN_GRANTS_FILE="${RUNNER_TEMP}/rancher-access-grants.${REF_NAME}.json"
+          BUILTIN_GRANTS_FILE="${RUNNER_TEMP}/rancher-access-grants.json"
           SCRIPTS_DIR="$GITHUB_WORKSPACE/.github/scripts"
 
           echo "Resolving Rancher grants catalog for branch '$REF_NAME' ..."
@@ -545,8 +543,9 @@ jobs:
             sleep "$KUBECONFIG_FETCH_SLEEP"
           done
 
+          REF_NAME_ENC=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["REF_NAME"], safe=""))')
           printf '%s' "$KUBECONFIG_CONTENT" | gh secret set KUBECONFIG \
-            --env "$REF_NAME" \
+            --env "$REF_NAME_ENC" \
             --repo "$GITHUB_REPOSITORY"
           echo "Published KUBECONFIG environment secret for: $REF_NAME"
 
@@ -582,6 +581,7 @@ jobs:
           # Remove problematic files that shouldn't be committed before git add -A
           rm -rf .terraform/ 2>/dev/null || echo "No .terraform directory to remove"
           rm -f .terraform.lock.hcl 2>/dev/null || echo "No .terraform.lock.hcl to remove"
+          rm -f rancher-override.tfvars 2>/dev/null || echo "No rancher-override.tfvars to remove"
           
           # Remove embedded git repositories to avoid submodule issues
           find . -name ".git" -type d -not -path "./.git" -exec rm -rf {} + 2>/dev/null || true
@@ -613,7 +613,7 @@ jobs:
             
             # Pull with rebase to avoid push rejection
             echo "Pulling latest changes with rebase..."
-            pull_output=$(git pull --rebase origin ${{ github.ref_name }} 2>&1)
+            pull_output=$(git pull --rebase origin "$REF_NAME" 2>&1)
             pull_exit=$?
             echo "$pull_output"
             if [ $pull_exit -ne 0 ]; then
@@ -624,8 +624,8 @@ jobs:
                 # Terraform state generated in this workflow is authoritative.
                 # Preserve local state during merge conflicts.
                 git rebase --abort
-                git fetch origin ${{ github.ref_name }}
-                git merge -X ours origin/${{ github.ref_name }} --no-edit
+                git fetch origin "$REF_NAME"
+                git merge -X ours "origin/${REF_NAME}" --no-edit
                 echo "Merge complete. Terraform state preserved."
               else
                 echo "❌ git pull --rebase failed with a non-conflict error:"
@@ -639,6 +639,7 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GH_INFRA_PAT }}
+          REF_NAME: ${{ github.ref_name }}
         if: always()
 
       - name: Terraform plan / apply status
