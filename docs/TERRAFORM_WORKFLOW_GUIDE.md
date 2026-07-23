@@ -74,8 +74,8 @@ Enable **`ENABLE_RANCHER_IMPORT`** when deploying the **`infra`** component to r
 
 ### What happens during apply
 
-1. **Plan-time**: Workflow mints an import URL and writes `rancher-override.tfvars` (valid shape for `terraform plan`).
-2. **Pre-apply refresh**: Import URL is minted again immediately before `terraform apply` (avoids stale tokens).
+1. **Plan-time**: Workflow mints an import URL and exports `TF_VAR_rancher_import_url` (profile `aws.tfvars` keeps `enable_rancher_import = true`; the URL is never written to git).
+2. **Pre-apply refresh**: Import URL is minted again and `TF_VAR_rancher_import_url` is updated immediately before `terraform apply` (avoids stale tokens).
 3. **Ansible import**: During apply, RKE2 playbook runs `kubectl apply -f …/v3/import/….yaml` on the control plane.
 4. **Grants**: After successful apply, multi-team RBAC is applied (`DEVOPS` always; others if `GRANT_GROUP_ACCESS=true`).
 5. **Kubeconfig**: If `PUBLISH_KUBECONFIG=true`, workflow waits for cluster **Active** and sets the environment `KUBECONFIG` secret.

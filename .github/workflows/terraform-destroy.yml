@@ -360,16 +360,14 @@ jobs:
             echo "TERRAFORM_DESTROY confirmed - proceeding with destruction"
           fi
 
-      - name: Prepare destroy tfvars (disable Rancher import)
+      - name: Prepare destroy env (disable Rancher import)
         if: ${{ inputs.TERRAFORM_COMPONENT == 'infra' && inputs.TERRAFORM_DESTROY == true }}
         run: |
           # Refresh/plan/destroy re-evaluate module preconditions; Rancher import URL is
           # only minted during apply and must not block teardown.
-          cat > rancher-destroy-override.tfvars <<'EOF'
-          enable_rancher_import = false
-          rancher_import_url    = ""
-          EOF
-          echo "Created rancher-destroy-override.tfvars (Rancher import disabled for destroy)"
+          echo "TF_VAR_enable_rancher_import=false" >> "$GITHUB_ENV"
+          echo "TF_VAR_rancher_import_url=" >> "$GITHUB_ENV"
+          echo "Rancher import disabled for destroy (via TF_VAR_* overrides)"
 
       - name: Terraform Init
         run: |
@@ -380,34 +378,20 @@ jobs:
           fi
 
       - name: Terraform refresh
-        run: |
-          TF_ARGS=(-input=false -var-file="$TFVARS_FILE")
-          if [ -f rancher-destroy-override.tfvars ]; then
-            TF_ARGS+=(-var-file=rancher-destroy-override.tfvars)
-          fi
-          terraform refresh "${TF_ARGS[@]}" -no-color
+        run: terraform refresh -input=false -var-file="$TFVARS_FILE" -no-color
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
 
       - name: Terraform Destroy Plan
         id: destroy-plan
         run: |
-          TF_ARGS=(-input=false -var-file="$TFVARS_FILE")
-          if [ -f rancher-destroy-override.tfvars ]; then
-            TF_ARGS+=(-var-file=rancher-destroy-override.tfvars)
-          fi
           echo "Showing what will be destroyed..."
-          terraform plan -destroy "${TF_ARGS[@]}" -no-color
+          terraform plan -destroy -input=false -var-file="$TFVARS_FILE" -no-color
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
         continue-on-error: true
 
       - name: Terraform Destroy
         id: destroy
-        run: |
-          TF_ARGS=(-input=false -var-file="$TFVARS_FILE")
-          if [ -f rancher-destroy-override.tfvars ]; then
-            TF_ARGS+=(-var-file=rancher-destroy-override.tfvars)
-          fi
-          terraform destroy "${TF_ARGS[@]}" -no-color -auto-approve
+        run: terraform destroy -input=false -var-file="$TFVARS_FILE" -no-color -auto-approve
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
         continue-on-error: true
 
@@ -475,9 +459,6 @@ jobs:
           
           git add -f backend.tf 2>/dev/null || echo "No backend.tf file found"
           git add -f *.tf 2>/dev/null || echo "No .tf files to add"
-          
-          # Generated Rancher override files must not be committed
-          rm -f rancher-destroy-override.tfvars rancher-override.tfvars 2>/dev/null || true
           
           # Remove embedded git repositories to avoid submodule issues
           find . -name ".git" -type d -not -path "./.git" -exec rm -rf {} + 2>/dev/null || true
