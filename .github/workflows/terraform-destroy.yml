@@ -360,6 +360,17 @@ jobs:
             echo "TERRAFORM_DESTROY confirmed - proceeding with destruction"
           fi
 
+      - name: Prepare destroy tfvars (disable Rancher import)
+        if: ${{ inputs.TERRAFORM_COMPONENT == 'infra' && inputs.TERRAFORM_DESTROY == true }}
+        run: |
+          # Refresh/plan/destroy re-evaluate module preconditions; Rancher import URL is
+          # only minted during apply and must not block teardown.
+          cat > rancher-destroy-override.tfvars <<'EOF'
+          enable_rancher_import = false
+          rancher_import_url    = ""
+          EOF
+          echo "Created rancher-destroy-override.tfvars (Rancher import disabled for destroy)"
+
       - name: Terraform Init
         run: |
           # First try normal init
@@ -369,20 +380,34 @@ jobs:
           fi
 
       - name: Terraform refresh
-        run: terraform refresh -input=false -var-file="$TFVARS_FILE" -no-color
+        run: |
+          TF_ARGS=(-input=false -var-file="$TFVARS_FILE")
+          if [ -f rancher-destroy-override.tfvars ]; then
+            TF_ARGS+=(-var-file=rancher-destroy-override.tfvars)
+          fi
+          terraform refresh "${TF_ARGS[@]}" -no-color
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
 
       - name: Terraform Destroy Plan
         id: destroy-plan
         run: |
+          TF_ARGS=(-input=false -var-file="$TFVARS_FILE")
+          if [ -f rancher-destroy-override.tfvars ]; then
+            TF_ARGS+=(-var-file=rancher-destroy-override.tfvars)
+          fi
           echo "Showing what will be destroyed..."
-          terraform plan -destroy -input=false -var-file="$TFVARS_FILE" -no-color
+          terraform plan -destroy "${TF_ARGS[@]}" -no-color
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
         continue-on-error: true
 
       - name: Terraform Destroy
         id: destroy
-        run: terraform destroy -input=false -var-file="$TFVARS_FILE" -no-color -auto-approve
+        run: |
+          TF_ARGS=(-input=false -var-file="$TFVARS_FILE")
+          if [ -f rancher-destroy-override.tfvars ]; then
+            TF_ARGS+=(-var-file=rancher-destroy-override.tfvars)
+          fi
+          terraform destroy "${TF_ARGS[@]}" -no-color -auto-approve
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
         continue-on-error: true
 
