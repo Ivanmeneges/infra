@@ -10,7 +10,7 @@
 #   3. Print the import command in the exact quoted form Terraform expects:
 #        "kubectl apply -f https://<rancher-host>/v3/import/<id>.yaml"
 #
-# The printed value can be fed straight into TF_VAR_rancher_import_url.
+# The printed value is consumed by write-rancher-runtime-tfvars.sh (second -var-file).
 #
 # Requires: bash 4+, curl, jq.
 

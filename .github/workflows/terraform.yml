@@ -336,17 +336,17 @@ jobs:
             --rancher-url "$RANCHER_URL" \
             --token "$RANCHER_TOKEN" \
             --cluster-name "$CLUSTER_NAME" | tail -n1)"
-          echo "TF_VAR_enable_rancher_import=true" >> "$GITHUB_ENV"
-          {
-            echo 'TF_VAR_rancher_import_url<<RANCHER_IMPORT_EOF'
-            printf '%s\n' "$IMPORT_CMD"
-            echo 'RANCHER_IMPORT_EOF'
-          } >> "$GITHUB_ENV"
-          echo "Rancher import URL minted for: $CLUSTER_NAME (via TF_VAR_rancher_import_url; not written to profile aws.tfvars)"
+          RUNTIME_VARS_FILE="${RUNNER_TEMP}/rancher-runtime.tfvars"
+          "$GITHUB_WORKSPACE/.github/scripts/write-rancher-runtime-tfvars.sh" \
+            --out "$RUNTIME_VARS_FILE" \
+            --enable true \
+            --import-cmd "$IMPORT_CMD"
+          echo "RANCHER_RUNTIME_VARS_FILE=$RUNTIME_VARS_FILE" >> "$GITHUB_ENV"
+          echo "Rancher import URL minted for: $CLUSTER_NAME (runtime -var-file; not written to profile aws.tfvars)"
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -input=false -var-file="$TFVARS_FILE" -out ./tf-plan -no-color
+        run: terraform plan -input=false -var-file="$TFVARS_FILE" ${RANCHER_RUNTIME_VARS_FILE:+-var-file="$RANCHER_RUNTIME_VARS_FILE"} -out ./tf-plan -no-color
         continue-on-error: true
 
       - name: Refresh Rancher import URL before apply
@@ -368,17 +368,17 @@ jobs:
             --rancher-url "$RANCHER_URL" \
             --token "$RANCHER_TOKEN" \
             --cluster-name "$CLUSTER_NAME" | tail -n1)"
-          echo "TF_VAR_enable_rancher_import=true" >> "$GITHUB_ENV"
-          {
-            echo 'TF_VAR_rancher_import_url<<RANCHER_IMPORT_EOF'
-            printf '%s\n' "$IMPORT_CMD"
-            echo 'RANCHER_IMPORT_EOF'
-          } >> "$GITHUB_ENV"
-          echo "Refreshed Rancher import URL for apply (via TF_VAR_rancher_import_url)"
+          RUNTIME_VARS_FILE="${RUNNER_TEMP}/rancher-runtime.tfvars"
+          "$GITHUB_WORKSPACE/.github/scripts/write-rancher-runtime-tfvars.sh" \
+            --out "$RUNTIME_VARS_FILE" \
+            --enable true \
+            --import-cmd "$IMPORT_CMD"
+          echo "RANCHER_RUNTIME_VARS_FILE=$RUNTIME_VARS_FILE" >> "$GITHUB_ENV"
+          echo "Refreshed Rancher import URL for apply (runtime -var-file)"
 
       - name: Terraform Apply
         id: apply
-        run: terraform apply -input=false -var-file="$TFVARS_FILE" -no-color -auto-approve
+        run: terraform apply -input=false -var-file="$TFVARS_FILE" ${RANCHER_RUNTIME_VARS_FILE:+-var-file="$RANCHER_RUNTIME_VARS_FILE"} -no-color -auto-approve
         if: "${{ inputs.TERRAFORM_APPLY  == true }}"
         continue-on-error: true
 

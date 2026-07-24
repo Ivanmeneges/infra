@@ -273,7 +273,7 @@ Generate Rancher import URL (plan-time) → Terraform Plan
   → Publish KUBECONFIG from Rancher
 ```
 
-The import URL is minted twice on purpose: once for plan validation, and again right before apply so the registration token is not stale (~15–20 minutes can pass between plan and Ansible import). The URL is passed via `TF_VAR_rancher_import_url` at runtime — it is **not** written to profile `aws.tfvars` (avoids committing short-lived tokens).
+The import URL is minted twice on purpose: once for plan validation, and again right before apply so the registration token is not stale (~15–20 minutes can pass between plan and Ansible import). The URL is written to a runtime tfvars file under `$RUNNER_TEMP` and passed as a **second** `-var-file` after the profile `aws.tfvars` (CLI `-var-file` overrides `TF_VAR_*` and profile placeholders). It is **not** committed to profile `aws.tfvars` (avoids committing short-lived tokens).
 
 #### Required environment secrets (per GitHub Environment, e.g. `dev1`)
 
