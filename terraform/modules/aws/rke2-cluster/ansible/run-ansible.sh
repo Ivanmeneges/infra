@@ -219,17 +219,58 @@ echo ""
 if [ $ANSIBLE_EXIT_CODE -eq 0 ]; then
     echo "✅ SUCCESS: RKE2 cluster installation completed successfully!"
     echo ""
-    echo "🎉 CLUSTER READY!"
-    echo "================"
-    echo "Your RKE2 cluster is now operational with:"
-    echo "  • $(grep -c 'control_plane' "$INVENTORY_FILE" 2>/dev/null || echo '3') Control Plane nodes"
-    echo "  • $(grep -c 'etcd' "$INVENTORY_FILE" 2>/dev/null || echo '3') ETCD nodes" 
-    echo "  • $(grep -c 'worker' "$INVENTORY_FILE" 2>/dev/null || echo '2') Worker nodes"
-    echo ""
-    echo "Next steps:"
-    echo "  1. Download kubeconfig from primary control plane"
-    echo "  2. Verify cluster with: kubectl get nodes"
-    echo "  3. Deploy your applications!"
+
+    # Post-playbook Rancher import with a freshly minted registration token (CI only).
+    if [[ "${ENABLE_RANCHER_IMPORT:-false}" == "true" \
+      && -n "${RANCHER_URL:-}" \
+      && -n "${RANCHER_TOKEN:-}" \
+      && -n "${RANCHER_CLUSTER_NAME:-}" ]]; then
+      APPLY_IMPORT_SCRIPT="${GITHUB_WORKSPACE:-}/.github/scripts/rancher-apply-cluster-import.sh"
+      if [[ -f "$APPLY_IMPORT_SCRIPT" ]]; then
+        PRIMARY_HOST="$(awk '
+          /^[[:space:]]+[A-Za-z0-9._-]+CONTROL-PLANE-NODE-1:/ { in_host=1; host=$1; sub(/:$/, "", host); next }
+          in_host && /ansible_host:/ { print $2; exit }
+        ' "$INVENTORY_FILE")"
+        if [[ -n "$PRIMARY_HOST" ]]; then
+          PRIMARY_NAME="$(awk '
+            /^[[:space:]]+[A-Za-z0-9._-]+CONTROL-PLANE-NODE-1:/ { sub(/:$/, "", $1); print $1; exit }
+          ' "$INVENTORY_FILE")"
+          PRIMARY_KUBECONFIG="/home/ubuntu/.kube/${PRIMARY_NAME}.yaml"
+          echo ""
+          echo "=== Rancher import (fresh registration token) ==="
+          chmod +x "$APPLY_IMPORT_SCRIPT"
+          if ! "$APPLY_IMPORT_SCRIPT" \
+            --rancher-url "$RANCHER_URL" \
+            --token "$RANCHER_TOKEN" \
+            --cluster-name "$RANCHER_CLUSTER_NAME" \
+            --ssh-key "$SSH_KEY_FILE" \
+            --ssh-host "$PRIMARY_HOST" \
+            --kubeconfig-remote "$PRIMARY_KUBECONFIG"; then
+            echo "❌ ERROR: Post-Ansible Rancher import failed"
+            ANSIBLE_EXIT_CODE=1
+          fi
+        else
+          echo "⚠️  WARN: Could not determine primary control-plane host from inventory; skipping post-Ansible Rancher import"
+        fi
+      else
+        echo "⚠️  WARN: $APPLY_IMPORT_SCRIPT not found; skipping post-Ansible Rancher import"
+      fi
+    fi
+
+    if [ $ANSIBLE_EXIT_CODE -eq 0 ]; then
+      echo ""
+      echo "🎉 CLUSTER READY!"
+      echo "================"
+      echo "Your RKE2 cluster is now operational with:"
+      echo "  • $(grep -c 'control_plane' "$INVENTORY_FILE" 2>/dev/null || echo '3') Control Plane nodes"
+      echo "  • $(grep -c 'etcd' "$INVENTORY_FILE" 2>/dev/null || echo '3') ETCD nodes"
+      echo "  • $(grep -c 'worker' "$INVENTORY_FILE" 2>/dev/null || echo '2') Worker nodes"
+      echo ""
+      echo "Next steps:"
+      echo "  1. Download kubeconfig from primary control plane"
+      echo "  2. Verify cluster with: kubectl get nodes"
+      echo "  3. Deploy your applications!"
+    fi
 else
     echo "❌ FAILED: RKE2 cluster installation failed with exit code $ANSIBLE_EXIT_CODE"
     echo ""

@@ -617,32 +617,57 @@
       debug:
         msg: "{{ cluster_status.stdout_lines }}"
 
-    - name: Check if Rancher import already done
-      shell: kubectl get namespace cattle-system
+    - name: Check if Rancher cattle-cluster-agent is healthy
+      shell: |
+        set -o pipefail
+        phase="$(kubectl get pods -n cattle-system -l app=cattle-cluster-agent -o jsonpath='{.items[0].status.phase}' 2>/dev/null || true)"
+        if [[ "$phase" == "Running" ]]; then
+          echo "healthy"
+          exit 0
+        fi
+        echo "unhealthy:${phase:-missing}"
+        exit 1
       become_user: ubuntu
       environment:
         KUBECONFIG: "/home/ubuntu/.kube/{{ inventory_hostname }}.yaml"
-      register: cattle_system_check
+      register: cattle_agent_check
       ignore_errors: yes
       when: enable_rancher_import | bool
       changed_when: false
 
-    - name: Execute Rancher import (first time only)
-      shell: "{{ rancher_import_url }}"
-      when: 
-        - enable_rancher_import | bool
-        - cattle_system_check.rc != 0
+    - name: Reset stale cattle-system before re-import
+      shell: kubectl delete namespace cattle-system --ignore-not-found --wait=true
       become_user: ubuntu
       environment:
         KUBECONFIG: "/home/ubuntu/.kube/{{ inventory_hostname }}.yaml"
-      ignore_errors: yes
-
-    - name: Skip Rancher import (already imported)
-      debug:
-        msg: "✅ Rancher already imported (cattle-system namespace exists) - skipping kubectl apply"
       when:
         - enable_rancher_import | bool
-        - cattle_system_check.rc == 0
+        - cattle_agent_check is failed
+
+    - name: Execute Rancher import (first time only)
+      shell: "{{ rancher_import_url | trim('\"') }}"
+      when:
+        - enable_rancher_import | bool
+        - cattle_agent_check is failed
+      become_user: ubuntu
+      environment:
+        KUBECONFIG: "/home/ubuntu/.kube/{{ inventory_hostname }}.yaml"
+      register: rancher_import_result
+      failed_when: rancher_import_result.rc != 0
+
+    - name: Report Rancher import result
+      debug:
+        msg: "Rancher import command exit={{ rancher_import_result.rc | default('skipped') }} stdout={{ rancher_import_result.stdout | default('') }}"
+      when:
+        - enable_rancher_import | bool
+        - rancher_import_result is defined
+
+    - name: Skip Rancher import (agent already healthy)
+      debug:
+        msg: "✅ Rancher already imported (cattle-cluster-agent Running) - skipping kubectl apply"
+      when:
+        - enable_rancher_import | bool
+        - cattle_agent_check is succeeded
 
     - name: Final success message
       debug:
