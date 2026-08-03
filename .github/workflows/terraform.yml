@@ -412,10 +412,11 @@ jobs:
           chmod 600 "$SSH_KEY_FILE"
           KUBECONFIG_REMOTE="/home/ubuntu/.kube/${CLUSTER_TF_NAME}-CONTROL-PLANE-NODE-1.yaml"
           echo "Applying fresh Rancher import on ${CONTROL_PLANE_IP} (Rancher cluster: ${CLUSTER_NAME}) ..."
-          "$GITHUB_WORKSPACE/.github/scripts/rancher-apply-cluster-import.sh" \
+          "$GITHUB_WORKSPACE/.github/scripts/rancher-register-cluster.sh" \
             --rancher-url "$RANCHER_URL" \
             --token "$RANCHER_TOKEN" \
             --cluster-name "$CLUSTER_NAME" \
+            --apply-on-host \
             --ssh-key "$SSH_KEY_FILE" \
             --ssh-host "$CONTROL_PLANE_IP" \
             --kubeconfig-remote "$KUBECONFIG_REMOTE"
