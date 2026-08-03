@@ -2,8 +2,10 @@
 #
 # rancher-apply-cluster-import.sh - Mint a fresh Rancher import URL and apply it on the cluster.
 #
-# Called from run-ansible.sh after RKE2 install so the import manifest is applied with a
-# current registration token (plan-time URLs can be tens of minutes old by Play 3).
+# Called from the terraform apply workflow after Terraform Apply succeeds so the import
+# manifest is applied with a current registration token (Ansible Play 3 may run 30+ min
+# after the URL was minted). Does not modify Ansible; manual/local imports still use
+# rancher_import_url in tfvars and the existing playbook path.
 #
 # Requires: bash 4+, curl, jq, ssh
 

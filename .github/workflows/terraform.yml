@@ -380,14 +380,45 @@ jobs:
 
       - name: Terraform Apply
         id: apply
-        env:
-          RANCHER_URL: ${{ secrets.RANCHER_API_URL }}
-          RANCHER_TOKEN: ${{ secrets.RANCHER_API_TOKEN }}
-          RANCHER_CLUSTER_NAME: ${{ inputs.RANCHER_CLUSTER_NAME || github.ref_name }}
-          ENABLE_RANCHER_IMPORT: ${{ inputs.ENABLE_RANCHER_IMPORT }}
         run: terraform apply -input=false -var-file="$TFVARS_FILE" ${RANCHER_RUNTIME_VARS_FILE:+-var-file="$RANCHER_RUNTIME_VARS_FILE"} -no-color -auto-approve
         if: ${{ inputs.TERRAFORM_APPLY == true && steps.plan.outcome == 'success' }}
         continue-on-error: true
+
+      - name: Apply Rancher import on cluster (fresh token)
+        if: ${{ inputs.TERRAFORM_COMPONENT == 'infra' && inputs.TERRAFORM_APPLY == true && inputs.ENABLE_RANCHER_IMPORT == true && steps.apply.outcome == 'success' }}
+        env:
+          RANCHER_URL: ${{ secrets.RANCHER_API_URL }}
+          RANCHER_TOKEN: ${{ secrets.RANCHER_API_TOKEN }}
+          RANCHER_CLUSTER_NAME_INPUT: ${{ inputs.RANCHER_CLUSTER_NAME }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -z "$RANCHER_URL" ] || [ -z "$RANCHER_TOKEN" ]; then
+            echo "ERROR: RANCHER_API_URL and RANCHER_API_TOKEN must be set for environment '$REF_NAME'"
+            exit 1
+          fi
+          CLUSTER_NAME="${RANCHER_CLUSTER_NAME_INPUT:-$REF_NAME}"
+          CONTROL_PLANE_IP="$(terraform output -raw control_plane_node_1 2>/dev/null || true)"
+          if [ -z "$CONTROL_PLANE_IP" ]; then
+            echo "ERROR: control_plane_node_1 output is empty — cannot apply Rancher import on cluster"
+            exit 1
+          fi
+          CLUSTER_TF_NAME="$(terraform output -json cluster_info 2>/dev/null | jq -r '.cluster_name // empty')"
+          if [ -z "$CLUSTER_TF_NAME" ]; then
+            echo "WARN: cluster_info.cluster_name unavailable; deriving node name from Rancher cluster name"
+            CLUSTER_TF_NAME="$CLUSTER_NAME"
+          fi
+          SSH_KEY_FILE="${RUNNER_TEMP}/tf-ssh-key.pem"
+          printf '%s' "$TF_VAR_ssh_private_key" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
+          KUBECONFIG_REMOTE="/home/ubuntu/.kube/${CLUSTER_TF_NAME}-CONTROL-PLANE-NODE-1.yaml"
+          echo "Applying fresh Rancher import on ${CONTROL_PLANE_IP} (Rancher cluster: ${CLUSTER_NAME}) ..."
+          "$GITHUB_WORKSPACE/.github/scripts/rancher-apply-cluster-import.sh" \
+            --rancher-url "$RANCHER_URL" \
+            --token "$RANCHER_TOKEN" \
+            --cluster-name "$CLUSTER_NAME" \
+            --ssh-key "$SSH_KEY_FILE" \
+            --ssh-host "$CONTROL_PLANE_IP" \
+            --kubeconfig-remote "$KUBECONFIG_REMOTE"
 
       - name: Grant Rancher cluster access (multi-team)
         if: ${{ inputs.TERRAFORM_COMPONENT == 'infra' && inputs.TERRAFORM_APPLY == true && inputs.ENABLE_RANCHER_IMPORT == true && steps.apply.outcome == 'success' }}
