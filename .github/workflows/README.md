@@ -20,6 +20,8 @@ This directory contains GitHub Actions workflows for automated MOSIP deployment:
 | `helmsman_mosip.yml` | Deploy MOSIP Services | Manual Dispatch | Uses deployed infra | Uses deployed PostgreSQL |
 | `helmsman_esignet.yml` | Deploy eSignet Stack | Manual/Push | Uses deployed infra | Uses deployed PostgreSQL |
 | `helmsman_testrigs.yml` | Deploy Test Rigs | Manual Dispatch | Uses deployed infra | Testing components |
+| `validate-infra-secrets.yml` | Validate `GH_INFRA_PAT` + expiry warnings | Weekly cron / Manual | N/A | N/A |
+| `k8s_health_check.yml` | Cluster health + disk alerts | Every 6h / Manual | N/A | N/A |
 
 ## Cloud Provider Support
 

@@ -335,6 +335,57 @@ Add as **Repository Secret** in GitHub:
 - ❌ Selecting **All repositories** instead of only the infra repository
 - ❌ Not saving the token immediately after generation — shown only once
 
+### Detecting an Expired or Invalid GH_INFRA_PAT
+
+GitHub **does not notify repository admins** when a PAT stored as a secret expires. Only the **token owner** may receive a pre-expiry email from GitHub. Workflows usually fail first — often at checkout:
+
+```text
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+That message means authentication failed before Terraform or Helmsman ran.
+
+#### Quick manual checks
+
+```bash
+# 1) API auth (401/403 = expired, revoked, or missing org SSO)
+curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
+  -H "Authorization: Bearer github_pat_..." \
+  https://api.github.com/user
+
+# 2) Same check Terraform checkout uses
+git ls-remote "https://x-access-token:github_pat_...@github.com/mosip/infra.git" HEAD
+```
+
+#### Automated monitoring (recommended)
+
+The scheduled workflow [`.github/workflows/validate-infra-secrets.yml`](../.github/workflows/validate-infra-secrets.yml) runs **every Monday 08:00 UTC** and:
+
+1. Validates `GH_INFRA_PAT` against the GitHub API
+2. Verifies read access to this repository (same as `actions/checkout`)
+3. Sends a **Slack alert** on failure (requires repo secret `SLACK_WEBHOOK_URL`)
+4. Warns **14 days before expiry** when repository variable `GH_INFRA_PAT_EXPIRES_AT` is set
+
+**Set the expiry tracker when you create or rotate the token:**
+
+| Setting | Location | Example |
+|---|---|---|
+| `GH_INFRA_PAT` | Repository secret | `github_pat_...` |
+| `GH_INFRA_PAT_EXPIRES_AT` | Repository variable | `2026-10-15` |
+| `SLACK_WEBHOOK_URL` | Repository secret | Slack incoming webhook |
+
+Run manually anytime: **Actions → Validate Infrastructure Secrets → Run workflow**.
+
+#### Other tokens to track the same way
+
+| Secret | Typical failure symptom |
+|---|---|
+| `RANCHER_API_TOKEN` | Rancher import / kubeconfig publish steps fail with 401 |
+| `GPG_PASSPHRASE` | State decrypt/encrypt fails mid-workflow |
+| AWS keys | Terraform provider auth errors during plan/apply |
+
+Store matching `*_EXPIRES_AT` repository variables (or a shared rotation calendar) for proactive alerts.
+
 ---
 
 ## 5. WireGuard VPN Configuration
