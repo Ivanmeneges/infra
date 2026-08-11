@@ -3,8 +3,8 @@ name: WireGuard environment onboard/offboard
 # Self-service WireGuard onboarding and offboarding for an environment.
 # Onboard: allocates free WireGuard peers from the jumpserver and publishes them
 # as GitHub *environment* secrets (TF_WG_CONFIG, CLUSTER_WIREGUARD_WG0/WG1).
-# Offboard: revokes peers on jumpserver, clears assigned.txt (peer-number order),
-# deletes GitHub env secrets, updates the tracker.
+# Offboard: removes assigned.txt lines for the environment, deletes GitHub secrets,
+# updates the tracker. Does not modify WireGuard keys on the jumpserver.
 #
 # Requires .github/scripts/wg-env.sh.
 
