@@ -56,8 +56,8 @@ WG0_PEER=""
 WG1_PEER=""
 MAX_PEERS=""
 DRY_RUN="false"
-DELETE_ENVIRONMENT="false"
-REGENERATE_PEERS="false"
+DELETE_ENVIRONMENT="true"
+REGENERATE_PEERS="true"
 ACTION=""
 
 # Secret name -> peer variable mapping is fixed in this order.
@@ -91,10 +91,10 @@ Onboard only:
   --wg1-peer <peerN>    Force the CLUSTER_WIREGUARD_WG1 peer (default: next free)
   --max-peers <n>       Peer pool size peer1..peerN (default: max(100, highest seen))
 
-Offboard only:
-  --delete-environment  Delete the GitHub environment after removing VPN secrets
-  --regenerate-peers    After revoke, recreate peer dirs with new keys on jumpserver
-  --keep-environment    Alias for default (secrets only; keep environment object)
+Offboard only (workflow uses defaults; CLI can override):
+  --delete-environment  Delete the GitHub environment after removing VPN secrets (default)
+  --regenerate-peers    Recreate peer dirs with new keys on jumpserver (default)
+  --keep-environment    Keep the GitHub environment object (secrets only)
 
 Requires: gh (authenticated with a token that can write environment secrets), ssh.
 EOF
