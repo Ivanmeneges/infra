@@ -1,431 +1,726 @@
 #!/usr/bin/env python3
-"""Generate MOSIP self-service deployment KT PowerPoint."""
+"""Generate branded MOSIP self-service deployment KT PowerPoint with flow diagrams."""
+
+from __future__ import annotations
 
 from pathlib import Path
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.util import Inches, Pt
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.util import Inches, Pt, Emu
 
-OUT = Path(__file__).resolve().parent / "MOSIP_New_Environment_Deployment_KT.pptx"
+HERE = Path(__file__).resolve().parent
+OUT = HERE / "MOSIP_New_Environment_Deployment_KT.pptx"
+LOGO = HERE / "mosip_logo.png"
+SVG_LOGO = HERE.parent / "_images" / "MOSIP_Black.svg"
 
-TITLE_COLOR = RGBColor(0x00, 0x33, 0x66)
-ACCENT = RGBColor(0x00, 0x66, 0x99)
-BODY = RGBColor(0x33, 0x33, 0x33)
+
+def ensure_logo() -> None:
+    if LOGO.exists():
+        return
+    if not SVG_LOGO.exists():
+        return
+    try:
+        import cairosvg
+
+        cairosvg.svg2png(url=str(SVG_LOGO), write_to=str(LOGO), output_width=400)
+    except Exception:
+        pass
+
+# MOSIP-inspired palette
+NAVY = RGBColor(0x0B, 0x1F, 0x3A)
+TEAL = RGBColor(0x00, 0x96, 0xC7)
+SKY = RGBColor(0x4D, 0xBD, 0xE5)
+ORANGE = RGBColor(0xF5, 0x7C, 0x00)
+GREEN = RGBColor(0x2E, 0x7D, 0x32)
+PURPLE = RGBColor(0x5E, 0x35, 0xB1)
+BODY = RGBColor(0x2D, 0x34, 0x40)
+MUTED = RGBColor(0x5C, 0x67, 0x7D)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+LIGHT_BG = RGBColor(0xF0, 0xF6, 0xFA)
+HEADER_BG = RGBColor(0xE8, 0xF4, 0xFA)
 
 
-def set_title(slide, text, subtitle=None):
-    slide.shapes.title.text = text
-    slide.shapes.title.text_frame.paragraphs[0].font.size = Pt(32)
-    slide.shapes.title.text_frame.paragraphs[0].font.bold = True
-    slide.shapes.title.text_frame.paragraphs[0].font.color.rgb = TITLE_COLOR
-    if subtitle and len(slide.placeholders) > 1:
-        sub = slide.placeholders[1]
-        sub.text = subtitle
-        sub.text_frame.paragraphs[0].font.size = Pt(16)
-        sub.text_frame.paragraphs[0].font.color.rgb = ACCENT
+def notes(slide, text: str) -> None:
+    slide.notes_slide.notes_text_frame.text = text.strip()
 
 
-def add_bullets(slide, items, level0_size=18):
-    body = slide.shapes.placeholders[1].text_frame
-    body.clear()
+def fill_shape(shape, color: RGBColor, line: RGBColor | None = None) -> None:
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = color
+    if line:
+        shape.line.color.rgb = line
+        shape.line.width = Pt(1)
+    else:
+        shape.line.fill.background()
+
+
+def set_text(
+    shape,
+    text: str,
+    *,
+    size: int = 14,
+    bold: bool = False,
+    color: RGBColor = BODY,
+    align=PP_ALIGN.CENTER,
+) -> None:
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]
+    p.text = text
+    p.font.size = Pt(size)
+    p.font.bold = bold
+    p.font.color.rgb = color
+    p.alignment = align
+
+
+def add_header_bar(slide, title: str, subtitle: str | None = None) -> None:
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(10), Inches(1.05))
+    fill_shape(bar, NAVY)
+    bar.line.fill.background()
+
+    title_box = slide.shapes.add_textbox(Inches(0.45), Inches(0.15), Inches(7.5), Inches(0.55))
+    set_text(title_box, title, size=26, bold=True, color=WHITE, align=PP_ALIGN.LEFT)
+
+    if subtitle:
+        sub_box = slide.shapes.add_textbox(Inches(0.45), Inches(0.62), Inches(8.5), Inches(0.35))
+        set_text(sub_box, subtitle, size=12, color=SKY, align=PP_ALIGN.LEFT)
+
+    if LOGO.exists():
+        slide.shapes.add_picture(str(LOGO), Inches(8.55), Inches(0.18), height=Inches(0.7))
+
+    accent = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(1.05), Inches(10), Inches(0.06))
+    fill_shape(accent, TEAL)
+    accent.line.fill.background()
+
+
+def add_footer(slide, text: str = "MOSIP Infrastructure • Self-Service Deployment KT") -> None:
+    foot = slide.shapes.add_textbox(Inches(0.45), Inches(7.05), Inches(9), Inches(0.3))
+    set_text(foot, text, size=9, color=MUTED, align=PP_ALIGN.LEFT)
+
+
+def add_bullet_area(slide, items: list[str], top=1.35, height=5.5, size=16) -> None:
+    box = slide.shapes.add_textbox(Inches(0.55), Inches(top), Inches(8.9), Inches(height))
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.clear()
     for i, item in enumerate(items):
-        p = body.paragraphs[0] if i == 0 else body.add_paragraph()
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.text = item
-        p.level = 0
-        p.font.size = Pt(level0_size)
+        p.level = 1 if item.startswith("  ") else 0
+        p.font.size = Pt(size if p.level == 0 else size - 2)
         p.font.color.rgb = BODY
-        p.space_after = Pt(8)
+        p.space_after = Pt(6)
+        if p.level == 0 and not item.startswith(" "):
+            p.font.bold = True
 
 
-def add_section(prs, title, bullets):
-    slide = prs.slides.add_slide(prs.slide_layouts[1])
-    set_title(slide, title)
-    add_bullets(slide, bullets)
+def blank_content_slide(prs: Presentation):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+    fill_shape(bg, WHITE)
+    bg.line.fill.background()
+    # send to back by z-order (first shape is back)
+    return slide
 
 
-def add_title_slide(prs, title, subtitle):
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    set_title(slide, title, subtitle)
+def add_content_slide(
+    prs: Presentation,
+    title: str,
+    bullets: list[str],
+    speaker: str,
+    subtitle: str | None = None,
+) -> None:
+    slide = blank_content_slide(prs)
+    add_header_bar(slide, title, subtitle)
+    add_bullet_area(slide, bullets)
+    add_footer(slide)
+    notes(slide, speaker)
 
 
-def add_two_column_notes(prs, title, left_title, left_items, right_title, right_items):
-    slide = prs.slides.add_slide(prs.slide_layouts[5])  # title only
-    set_title(slide, title)
-    # text boxes
-    left = slide.shapes.add_textbox(Inches(0.5), Inches(1.6), Inches(4.5), Inches(5))
-    tf = left.text_frame
+def add_title_slide(prs: Presentation, title: str, subtitle: str, speaker: str) -> None:
+    slide = blank_content_slide(prs)
+    # gradient-like bands
+    top = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(10), Inches(7.5))
+    fill_shape(top, NAVY)
+    top.line.fill.background()
+    band = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(4.8), Inches(10), Inches(2.7))
+    fill_shape(band, TEAL)
+    band.line.fill.background()
+
+    if LOGO.exists():
+        slide.shapes.add_picture(str(LOGO), Inches(0.75), Inches(0.65), height=Inches(0.95))
+
+    tbox = slide.shapes.add_textbox(Inches(0.75), Inches(2.0), Inches(8.5), Inches(1.4))
+    set_text(tbox, title, size=40, bold=True, color=WHITE, align=PP_ALIGN.LEFT)
+
+    sbox = slide.shapes.add_textbox(Inches(0.75), Inches(3.45), Inches(8.5), Inches(1.2))
+    set_text(sbox, subtitle, size=18, color=WHITE, align=PP_ALIGN.LEFT)
+
+    tag = slide.shapes.add_textbox(Inches(0.75), Inches(5.15), Inches(8.5), Inches(0.5))
+    set_text(tag, "Dev & QA Teams  •  GitHub Actions  •  August 2026", size=14, color=WHITE, align=PP_ALIGN.LEFT)
+    notes(slide, speaker)
+
+
+def flow_box(
+    slide,
+    left,
+    top,
+    width,
+    height,
+    text: str,
+    fill: RGBColor,
+    text_color: RGBColor = WHITE,
+    font_size: int = 11,
+) -> None:
+    shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+    fill_shape(shape, fill, line=WHITE)
+    set_text(shape, text, size=font_size, bold=True, color=text_color)
+
+
+def arrow_down(slide, cx, y1, y2) -> None:
+    conn = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, cx, y1, cx, y2)
+    conn.line.color.rgb = TEAL
+    conn.line.width = Pt(2.5)
+
+
+def arrow_right(slide, x1, y, x2) -> None:
+    conn = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y, x2, y)
+    conn.line.color.rgb = TEAL
+    conn.line.width = Pt(2.5)
+
+
+def add_diagram_slide(
+    prs: Presentation,
+    title: str,
+    speaker: str,
+    draw_fn,
+    subtitle: str | None = None,
+) -> None:
+    slide = blank_content_slide(prs)
+    add_header_bar(slide, title, subtitle)
+    draw_fn(slide)
+    add_footer(slide)
+    notes(slide, speaker)
+
+
+def draw_phase_architecture(slide) -> None:
+    phases = [
+        ("PHASE 0 — DevOps (once)", "base-infra\nVPC • Jump server • WireGuard", NAVY),
+        ("PHASE 1 — QA/Dev (per env)", "Branch → tfvars → WireGuard → Terraform\n→ Helmsman External → MOSIP → Test rigs", TEAL),
+        ("PHASE 2 — Teardown", "Helmsman destroy → terraform destroy\n→ WireGuard offboard", ORANGE),
+    ]
+    y = Inches(1.55)
+    cx = Inches(5.0)
+    for i, (label, detail, color) in enumerate(phases):
+        flow_box(slide, Inches(1.2), y, Inches(7.6), Inches(1.15), f"{label}\n{detail}", color, font_size=13)
+        if i < len(phases) - 1:
+            arrow_down(slide, cx, y + Inches(1.15), y + Inches(1.45))
+        y += Inches(1.45)
+
+
+def draw_branch_environment(slide) -> None:
+    boxes = [
+        (Inches(0.6), "Git Branch\nqajava11", TEAL),
+        (Inches(3.5), "GitHub Environment\nqajava11", PURPLE),
+        (Inches(6.4), "Environment Secrets\nKUBECONFIG, TF_WG_CONFIG…", NAVY),
+    ]
+    for left, text, color in boxes:
+        flow_box(slide, left, Inches(2.8), Inches(2.5), Inches(1.3), text, color, font_size=12)
+    arrow_right(slide, Inches(3.1), Inches(3.45), Inches(3.5))
+    arrow_right(slide, Inches(6.0), Inches(3.45), Inches(6.4))
+    hint = slide.shapes.add_textbox(Inches(1.0), Inches(4.6), Inches(8), Inches(0.8))
+    set_text(
+        hint,
+        "Rule: branch name MUST match environment name — all workflows use github.ref_name",
+        size=14,
+        color=MUTED,
+        align=PP_ALIGN.CENTER,
+    )
+
+
+def draw_ten_step_pipeline(slide) -> None:
+    steps = [
+        "1 Branch", "2 tfvars", "3 WireGuard", "4 Secrets",
+        "5 Terraform", "6 External", "7 MOSIP", "8 Test rigs",
+    ]
+    x, y = Inches(0.35), Inches(1.6)
+    w, h = Inches(1.15), Inches(0.72)
+    colors = [TEAL, TEAL, TEAL, PURPLE, NAVY, ORANGE, GREEN, SKY]
+    for i, (step, color) in enumerate(zip(steps, colors)):
+        col, row = i % 4, i // 4
+        left = x + col * Inches(2.35)
+        top = y + row * Inches(1.35)
+        flow_box(slide, left, top, w, h, step, color, font_size=10)
+        if col < 3 and row == 0:
+            arrow_right(slide, left + w, top + h // 2, left + w + Inches(0.35))
+        if i == 3:
+            arrow_down(slide, left + w // 2 + Inches(0.35), top + h, top + Inches(0.55))
+    legend = slide.shapes.add_textbox(Inches(0.5), Inches(4.85), Inches(9), Inches(1.8))
+    tf = legend.text_frame
     tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.text = left_title
-    p.font.bold = True
-    p.font.size = Pt(16)
-    p.font.color.rgb = ACCENT
-    for item in left_items:
-        p = tf.add_paragraph()
-        p.text = f"• {item}"
-        p.font.size = Pt(14)
+    lines = [
+        "Steps 1–4: Prepare environment (QA/Dev)",
+        "Step 5: Infrastructure + Rancher + KUBECONFIG (automated)",
+        "Steps 6–7: Application stack (External auto-triggers MOSIP)",
+        "Step 8: Optional test automation",
+    ]
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = f"▸ {line}"
+        p.font.size = Pt(13)
         p.font.color.rgb = BODY
-        p.space_after = Pt(4)
-
-    right = slide.shapes.add_textbox(Inches(5.2), Inches(1.6), Inches(4.5), Inches(5))
-    tf = right.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.text = right_title
-    p.font.bold = True
-    p.font.size = Pt(16)
-    p.font.color.rgb = ACCENT
-    for item in right_items:
-        p = tf.add_paragraph()
-        p.text = f"• {item}"
-        p.font.size = Pt(14)
-        p.font.color.rgb = BODY
-        p.space_after = Pt(4)
 
 
-def build():
+def draw_rancher_flow(slide) -> None:
+    steps = [
+        "Mint import URL",
+        "Plan",
+        "Refresh URL",
+        "Apply",
+        "SSH import",
+        "RBAC grants",
+        "Publish KUBECONFIG",
+        "Commit state",
+    ]
+    x, y = Inches(0.4), Inches(1.55)
+    w, h = Inches(1.08), Inches(0.65)
+    for i, step in enumerate(steps):
+        col, row = i % 4, i // 4
+        left = x + col * Inches(2.35)
+        top = y + row * Inches(1.05)
+        color = NAVY if step in ("Apply", "Publish KUBECONFIG") else TEAL
+        flow_box(slide, left, top, w, h, step, color, font_size=9)
+        if col < 3:
+            arrow_right(slide, left + w, top + h // 2, left + w + Inches(0.35))
+        if i == 3:
+            arrow_down(slide, left + w // 2 + Inches(0.35), top + h, top + Inches(0.35))
+    badge = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(4.5), Inches(9), Inches(0.55))
+    fill_shape(badge, LIGHT_BG, line=TEAL)
+    set_text(
+        badge,
+        "Inputs: ENABLE_RANCHER_IMPORT=true  •  PUBLISH_KUBECONFIG=true  •  RANCHER_API_URL + TOKEN",
+        size=12,
+        bold=True,
+        color=NAVY,
+    )
+
+
+def draw_helmsman_cascade(slide) -> None:
+    flow_box(slide, Inches(1.0), Inches(2.0), Inches(2.2), Inches(1.0), "Helmsman\nExternal", ORANGE)
+    flow_box(slide, Inches(3.9), Inches(2.0), Inches(2.2), Inches(1.0), "Helmsman\nMOSIP", GREEN)
+    flow_box(slide, Inches(6.8), Inches(2.0), Inches(2.2), Inches(1.0), "Test Rigs\n(optional)", SKY, text_color=NAVY)
+    arrow_right(slide, Inches(3.2), Inches(2.5), Inches(3.9))
+    arrow_right(slide, Inches(6.1), Inches(2.5), Inches(6.8))
+
+    details = [
+        ("prereq + external DSF", "Istio • Keycloak • Kafka • MinIO"),
+        ("mosip-dsf.yaml", "All MOSIP core services"),
+        ("testrigs-dsf.yaml", "API / UI automation"),
+    ]
+    for i, (title, sub) in enumerate(details):
+        left = Inches(1.0) + i * Inches(2.9)
+        box = slide.shapes.add_textbox(left, Inches(3.35), Inches(2.5), Inches(1.2))
+        set_text(box, f"{title}\n{sub}", size=11, color=MUTED)
+
+    warn = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.5), Inches(4.85), Inches(7), Inches(0.6))
+    fill_shape(warn, RGBColor(0xFF, 0xF3, 0xE0), line=ORANGE)
+    set_text(warn, "Always use mode=apply — dry-run fails validation", size=13, bold=True, color=ORANGE)
+
+
+def draw_teardown_flow(slide) -> None:
+    steps = [
+        ("Helmsman Destroy\n(optional)", ORANGE),
+        ("terraform destroy\nTERRAFORM_DESTROY=true", NAVY),
+        ("WireGuard offboard\n(optional)", TEAL),
+    ]
+    for i, (text, color) in enumerate(steps):
+        left = Inches(0.9) + i * Inches(3.05)
+        flow_box(slide, left, Inches(2.5), Inches(2.5), Inches(1.2), text, color, font_size=12)
+        if i < 2:
+            arrow_right(slide, left + Inches(2.5), Inches(3.1), left + Inches(3.05))
+    note = slide.shapes.add_textbox(Inches(0.8), Inches(4.2), Inches(8.4), Inches(1.5))
+    set_text(
+        note,
+        "Destroy auto-disables Rancher import — no tfvars edit needed\n"
+        "Re-run destroy if git commit step fails (e.g. branch names with parentheses)",
+        size=13,
+        color=BODY,
+        align=PP_ALIGN.CENTER,
+    )
+
+
+def draw_secrets_flow(slide) -> None:
+    groups = [
+        ("Repository\n(one-time)", "GPG • AWS • SSH • GH_INFRA_PAT", NAVY),
+        ("Auto-published\n(per env)", "TF_WG_CONFIG • WG0/WG1 • KUBECONFIG", TEAL),
+        ("Manual\n(per env)", "Rancher API • Captcha (6 keys)", PURPLE),
+    ]
+    for i, (title, items, color) in enumerate(groups):
+        left = Inches(0.55) + i * Inches(3.15)
+        flow_box(slide, left, Inches(1.7), Inches(2.85), Inches(0.65), title, color, font_size=11)
+        box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, Inches(2.5), Inches(2.85), Inches(2.5))
+        fill_shape(box, LIGHT_BG, line=color)
+        set_text(box, items, size=12, color=BODY)
+
+
+def add_step_slide(
+    prs: Presentation,
+    step_num: int,
+    title: str,
+    bullets: list[str],
+    speaker: str,
+    accent: RGBColor = TEAL,
+) -> None:
+    slide = blank_content_slide(prs)
+    # step badge
+    badge = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.45), Inches(1.25), Inches(0.75), Inches(0.75))
+    fill_shape(badge, accent)
+    set_text(badge, str(step_num), size=28, bold=True, color=WHITE)
+    add_header_bar(slide, title)
+    add_bullet_area(slide, bullets, top=1.35)
+    add_footer(slide)
+    notes(slide, speaker)
+
+
+def build() -> None:
+    ensure_logo()
     prs = Presentation()
     prs.slide_width = Inches(10)
     prs.slide_height = Inches(7.5)
 
     add_title_slide(
         prs,
-        "MOSIP New Environment Deployment",
-        "Knowledge Transfer for Dev & QA Teams\nSelf-Service GitHub Actions Workflow • August 2026",
+        "MOSIP New Environment\nDeployment",
+        "Knowledge Transfer Session\nSelf-Service GitHub Actions Workflow",
+        "Welcome the audience. Set expectation: QA/Dev can deploy a full MOSIP env with minimal DevOps "
+        "involvement. Duration ~60–90 min. Share docs/SELF_SERVICE_DEPLOYMENT_GUIDE.md after session.",
     )
 
-    add_section(
+    add_content_slide(
         prs,
         "Agenda",
         [
-            "Core concepts: branch = environment, deployment profiles",
-            "Architecture: Phase 0 (DevOps) vs Phase 1 (QA/Dev per env)",
-            "Complete 10-step deployment walkthrough",
-            "Terraform + Rancher automation (import & KUBECONFIG)",
-            "Helmsman application deployment",
-            "Secrets, verification, and sign-off checklist",
-            "Common mistakes & teardown overview",
-            "Documentation & Q&A",
+            "Core concepts & architecture (with flow diagrams)",
+            "Phase 0: one-time DevOps platform setup",
+            "Phase 1: 8 deployment steps for each new environment",
+            "Terraform + Rancher automation deep-dive",
+            "Helmsman application deployment cascade",
+            "Secrets checklist & verification sign-off",
+            "Common mistakes & teardown",
+            "Q&A",
         ],
+        "Walk through agenda. Emphasize live demo of GitHub Actions if possible. "
+        "Point attendees to the PPT + self-service guide for later reference.",
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
         "Who Does What?",
-        [
-            "DevOps (once per platform): base-infra, optional observ-infra/Rancher, repo secrets",
-            "QA / Dev (per environment): branch, tfvars, WireGuard onboard, captcha, workflows",
-            "Goal: deploy a new env like qajava11 without DevOps for routine steps",
-            "Automation branch required (e.g. Ivanmeneges-patch-kubeconfig or develop after merge)",
-            "Reference doc: docs/SELF_SERVICE_DEPLOYMENT_GUIDE.md",
-        ],
+        "DevOps owns Phase 0 once per VPC. QA/Dev own Phase 1 per environment. "
+        "Draw the line: routine env creation should not need a DevOps ticket.",
+        draw_phase_architecture,
+        "Three phases: platform setup → per-env deploy → teardown",
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
         "Core Concept: Branch = Environment",
-        [
-            "Git branch name = GitHub Environment name = secret scope",
-            "Example: branch qajava11 → Settings → Environments → qajava11",
-            "All workflows use: environment: ${{ github.ref_name }}",
-            "Branch names with parentheses supported (e.g. perfm(issue1919))",
-            "Create new env: git checkout -b <env-name> and push",
-        ],
+        "This is the #1 concept. Show GitHub Settings → Environments with branch name. "
+        "If branch is qajava11, ALL secrets go under environment qajava11 — not repository secrets.",
+        draw_branch_environment,
     )
 
-    add_section(
+    add_content_slide(
         prs,
         "Deployment Profiles",
         [
-            "mosip — full MOSIP platform (7-node cluster)",
-            "  • tfvars: profiles/mosip/aws.tfvars",
-            "  • Helmsman: Helmsman/dsf/mosip-platform-1.2.0.x/ or 1.2.1.x/",
+            "mosip — Full MOSIP platform (7-node K8s cluster)",
+            "  tfvars: profiles/mosip/aws.tfvars",
+            "  Helmsman: mosip-platform-1.2.0.x/ or 1.2.1.x/",
             "esignet-standalone — eSignet only (4-node cluster)",
-            "  • tfvars: profiles/esignet-standalone/aws.tfvars",
-            "  • Helmsman: Helmsman/dsf/esignet-standalone/",
-            "Pick MOSIP version folder to match your release",
+            "  tfvars: profiles/esignet-standalone/aws.tfvars",
+            "  Helmsman: esignet-standalone/",
+            "Profile picks both Terraform sizing AND Helmsman DSF folder — keep them aligned",
         ],
+        "Ask which MOSIP release the team targets — that determines Helmsman profile folder. "
+        "Most QA envs use mosip profile.",
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
-        "Architecture Overview",
-        [
-            "PHASE 0 (one-time, DevOps):",
-            "  • terraform plan/apply → base-infra (VPC, jump server, WireGuard server)",
-            "  • Optional: observ-infra (Rancher UI + Keycloak) + SAML integration",
-            "PHASE 1 (per environment, QA/Dev):",
-            "  1. Branch  2. tfvars  3. WireGuard onboard  4. Secrets/vars",
-            "  5. Terraform infra  6. Helmsman External  7. Helmsman MOSIP  8. Test rigs",
-            "PHASE 2 (teardown): Helmsman destroy → terraform destroy → WireGuard offboard",
-        ],
+        "10-Step Deployment Pipeline",
+        "Overview slide before diving into each step. QA teams can screenshot this as their cheat sheet.",
+        draw_ten_step_pipeline,
+        "Per-environment flow from branch creation to optional test rigs",
     )
 
-    add_two_column_notes(
+    add_content_slide(
         prs,
-        "What Is Automated vs Manual?",
-        "Automated (self-service)",
+        "Automated vs Manual",
         [
-            "WireGuard peer allocation → TF_WG_CONFIG, WG0, WG1",
-            "Rancher cluster registration (ENABLE_RANCHER_IMPORT=true)",
-            "Post-apply Rancher import on control plane (fresh token)",
-            "KUBECONFIG publish to env secret (PUBLISH_KUBECONFIG=true)",
-            "DSF domain placeholders ${domain_name}",
-            "Captcha keys from environment secrets",
+            "✅ Automated: WireGuard peers, Rancher import, KUBECONFIG publish, DSF domains",
+            "✅ Automated: Post-apply Rancher SSH import (fresh token)",
+            "✅ Automated: Runtime tfvars — no rancher_import_url in profile tfvars",
+            "📝 Manual: Google reCAPTCHA keys (6 per env)",
+            "📝 Manual: Route53 zone_id, AMI in tfvars",
+            "📝 Manual: Partner onboarding verification in MinIO",
         ],
-        "Still manual",
-        [
-            "Google reCAPTCHA key creation (6 keys per env)",
-            "Route53 zone ID, AMI ID in tfvars",
-            "MOSIP / k8s-infra branch selection in tfvars",
-            "Helmsman profile version choice",
-            "Partner onboarding verification in MinIO",
-        ],
+        "Set expectations on what QA still must do. Captcha is the biggest manual chunk. "
+        "Everything else is workflow-driven on the automation branch.",
     )
 
-    add_section(
+    add_content_slide(
         prs,
         "Phase 0 — DevOps One-Time Setup",
         [
-            "Repository secrets: GPG_PASSPHRASE, AWS keys, mosip-aws (SSH), GH_INFRA_PAT",
-            "WireGuard onboard secrets: ACTION_PAT, MOSIP_AWS_PEM",
-            "Workflow: terraform plan / apply → TERRAFORM_COMPONENT=base-infra, APPLY=true",
+            "Repository secrets: GPG_PASSPHRASE, AWS keys, mosip-aws, GH_INFRA_PAT",
+            "WireGuard: ACTION_PAT, MOSIP_AWS_PEM (for onboard workflow)",
+            "Workflow: terraform plan/apply → base-infra, TERRAFORM_APPLY=true",
             "Edit: terraform/implementations/aws/base-infra/aws.tfvars",
-            "Save jump server public IP for WireGuard onboard",
+            "Output: Jump server public IP (needed for WireGuard onboard)",
             "Optional: observ-infra + Keycloak-Rancher SAML for Rancher SSO",
         ],
+        "DevOps-only section. QA can skip unless setting up a new VPC. "
+        "Mention self-hosted runner requirement for WireGuard onboard workflow.",
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 1 — Create Deployment Branch",
+        1,
+        "Create Deployment Branch",
         [
-            "git clone https://github.com/YOUR_ORG/infra.git",
-            "git checkout <automation-branch>",
-            "git checkout -b qajava11    # branch name = environment name",
+            "git clone → checkout automation branch",
+            "git checkout -b qajava11",
             "git push -u origin qajava11",
-            "GitHub auto-creates Environment when secrets are first written",
+            "Branch name becomes GitHub Environment name",
+            "Commit profile tfvars on this branch",
         ],
+        "Demo: show branch creation in GitHub. Warn: branch name must be valid and match env name exactly.",
+        TEAL,
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 2 — Edit Terraform tfvars",
+        2,
+        "Edit Terraform tfvars",
         [
-            "File: terraform/implementations/aws/infra/profiles/mosip/aws.tfvars",
-            "Key fields to set:",
-            "  • cluster_name → qajava11",
-            "  • cluster_env_domain → qajava11.mosip.net",
-            "  • zone_id, ami, vpc_name, ssh_key_name",
-            "  • enable_postgresql_setup=true, postgresql_port=5433",
-            "  • mosip_infra_branch=develop (NOT perfm — use develop)",
-            "Do NOT set rancher_import_url when using ENABLE_RANCHER_IMPORT=true",
-            "Commit and push tfvars to your env branch",
+            "File: profiles/mosip/aws.tfvars",
+            "cluster_name + cluster_env_domain must match Helmsman inputs",
+            "zone_id, ami, vpc_name, ssh_key_name",
+            "enable_postgresql_setup=true, postgresql_port=5433",
+            "mosip_infra_branch=develop (use develop, not perfm)",
+            "Do NOT set rancher_import_url when using ENABLE_RANCHER_IMPORT",
         ],
+        "Walk through tfvars file in repo. Highlight mosip_infra_branch=develop — common mistake is perfm.",
+        TEAL,
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 3 — WireGuard Onboard (Automated)",
+        3,
+        "WireGuard Onboard (Automated)",
         [
             "Workflow: WireGuard onboard environment",
-            "Requires: self-hosted runner + MOSIP_AWS_PEM + ACTION_PAT",
-            "Inputs: ENV_NAME=qajava11, JUMPSERVER_HOST=<jump IP>",
-            "DRY_RUN=true first, then DRY_RUN=false",
-            "Creates environment secrets:",
-            "  • TF_WG_CONFIG (Terraform VPN)",
-            "  • CLUSTER_WIREGUARD_WG0 / WG1 (Helmsman VPN)",
-            "Run this BEFORE terraform infra — TF_WG_CONFIG is required",
+            "Requires: self-hosted runner, MOSIP_AWS_PEM, ACTION_PAT",
+            "ENV_NAME=qajava11, JUMPSERVER_HOST=<jump IP>",
+            "DRY_RUN=true first, then false",
+            "Creates: TF_WG_CONFIG, CLUSTER_WIREGUARD_WG0, WG1",
+            "Must complete BEFORE terraform infra",
         ],
+        "Demo DRY_RUN output if possible. Stress order: WireGuard before Terraform. "
+        "Without TF_WG_CONFIG, infra workflow fails immediately.",
+        PURPLE,
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
-        "Step 4 — Secrets & Environment Variables",
+        "Secrets & Variables Map",
+        "Show GitHub Environments UI. Three buckets: repo secrets, auto-published, manual per env.",
+        draw_secrets_flow,
+        "Where each secret comes from",
+    )
+
+    add_step_slide(
+        prs,
+        4,
+        "Captcha, Rancher API & Env Variables",
         [
-            "4a. Create 6 reCAPTCHA v2 keys (Google Admin) for prereg/admin/resident domains",
-            "4b. Set captcha secrets on Environment qajava11 (PREREG_*, ADMIN_*, RESIDENT_*)",
-            "4c. Environment variables: DOMAIN_NAME, ENV_NAME, CLUSTER_ID, DB_PORT=5433",
-            "4d. Rancher secrets: RANCHER_API_URL (no /v3), RANCHER_API_TOKEN",
-            "Location: Repo → Settings → Environments → qajava11",
+            "Create 6 reCAPTCHA v2 keys (prereg, admin, resident domains)",
+            "Set captcha secrets on Environment qajava11",
+            "Variables: DOMAIN_NAME, ENV_NAME, CLUSTER_ID, DB_PORT=5433",
+            "Secrets: RANCHER_API_URL (no /v3), RANCHER_API_TOKEN",
+            "Location: Settings → Environments → qajava11",
         ],
+        "Captcha takes ~15 min. Rancher token from Rancher UI → Account & API Keys. "
+        "CLUSTER_ID can be set after first deploy if unknown.",
+        PURPLE,
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 5 — Terraform Infra Workflow Inputs",
+        5,
+        "Terraform Infra — Workflow Inputs",
         [
             "Workflow: terraform plan / apply",
-            "CLOUD_PROVIDER=aws | TERRAFORM_COMPONENT=infra | INFRA_PROFILE=mosip",
-            "TERRAFORM_APPLY=true ✅",
-            "ENABLE_RANCHER_IMPORT=true ✅",
-            "RANCHER_CLUSTER_NAME=<name> (optional — defaults to branch)",
-            "PUBLISH_KUBECONFIG=true ✅ (default)",
-            "GRANT_GROUP_ACCESS=false (enable for multi-team RBAC from JSON)",
-            "Prerequisites: TF_WG_CONFIG + RANCHER_API_* secrets must exist",
+            "TERRAFORM_COMPONENT=infra, INFRA_PROFILE=mosip",
+            "TERRAFORM_APPLY ✅  ENABLE_RANCHER_IMPORT ✅",
+            "PUBLISH_KUBECONFIG ✅ (default)",
+            "RANCHER_CLUSTER_NAME optional (defaults to branch)",
+            "Prerequisites: TF_WG_CONFIG + RANCHER_API_* must exist",
         ],
+        "Demo: Run workflow form in GitHub Actions. Show checkboxes. "
+        "GRANT_GROUP_ACCESS enables multi-team RBAC from rancher-access-grants.json.",
+        NAVY,
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
-        "Step 5 — What Happens Inside Terraform (Rancher)",
+        "Terraform + Rancher Internal Flow",
+        "Key technical slide for Dev audience. Explain why URL is refreshed before apply "
+        "(stale token caused production issues). Post-apply SSH import is the reliability fix.",
+        draw_rancher_flow,
+        "8 automated steps inside terraform plan/apply when Rancher import enabled",
+    )
+
+    add_step_slide(
+        prs,
+        5,
+        "After Terraform — Verify",
         [
-            "1. Generate Rancher import URL via API (plan time)",
-            "2. Terraform Plan (with runtime tfvars — fresh import command)",
-            "3. Refresh import URL immediately before apply",
-            "4. Terraform Apply — EC2, RKE2, DNS, PostgreSQL, Ansible",
-            "5. Apply Rancher import on cluster — SSH to control plane, fresh manifest",
-            "6. Grant Rancher cluster access (optional — DEVOPS always cluster-owner)",
-            "7. Publish KUBECONFIG — wait ~6 min for state=active, set env secret",
-            "8. Encrypt state and push to branch",
+            "Environment secret KUBECONFIG exists (auto-published)",
+            "Rancher UI: cluster state = Active",
+            "kubectl get nodes — all Ready",
+            "kubectl get pods -n cattle-system — agent Running",
+            "Copy CLUSTER_ID for Helmsman (e.g. c-c8ms8)",
+            "If publish failed: check Apply Rancher import step logs",
         ],
+        "Show successful Actions run. Open Rancher UI. Show KUBECONFIG in GitHub env secrets. "
+        "Troubleshoot: cattle-cluster-agent not Running = network or stale import.",
+        NAVY,
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
-        "Step 5 — After Terraform: Verify",
-        [
-            "GitHub Environment has KUBECONFIG secret (auto-published)",
-            "Rancher UI → Cluster Management → cluster Active",
-            "kubectl get nodes — all Ready (via WireGuard connected)",
-            "kubectl get pods -n cattle-system — cattle-cluster-agent Running",
-            "Copy CLUSTER_ID (e.g. c-c8ms8) for Helmsman Step 6",
-            "If kubeconfig publish failed: check import step + cattle-system pods",
-        ],
+        "Helmsman Deployment Cascade",
+        "External workflow triggers MOSIP automatically on success. Always apply mode.",
+        draw_helmsman_cascade,
+        "Application layer after infrastructure is ready",
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 6 — Helmsman External (Prereq + External)",
+        6,
+        "Helmsman External (Prereq + External)",
         [
             "Workflow: Deploy External services of mosip using Helmsman",
             "mode=apply ⚠️ NOT dry-run",
-            "profile=mosip-platform-1.2.0.x (match your MOSIP version)",
-            "domain_name=qajava11.mosip.net | env_name=qajava11 | db_port=5433",
-            "clusterid=c-xxxxx (from Rancher UI)",
-            "Deploys in parallel: prereq-dsf.yaml + external-dsf.yaml",
-            "  • Istio, monitoring, Keycloak, Kafka, MinIO, ActiveMQ, captcha",
-            "On success → auto-triggers Helmsman MOSIP workflow",
+            "profile, domain_name, env_name, db_port=5433, clusterid",
+            "Parallel: prereq-dsf + external-dsf",
+            "Istio, monitoring, Keycloak, Kafka, MinIO, ActiveMQ",
+            "Success → auto-triggers Helmsman MOSIP",
         ],
+        "Duration ~70–110 min. Show workflow inputs. clusterid from Rancher is required for monitoring.",
+        ORANGE,
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 7 — Helmsman MOSIP (Automatic)",
+        7,
+        "Helmsman MOSIP (Automatic)",
         [
-            "Workflow: Deploy Mosip services of mosip using Helmsman",
-            "Usually auto-triggered after Step 6 succeeds",
-            "If not started: run manually with mode=apply",
-            "Deploys: mosip-dsf.yaml — all MOSIP core services",
-            "Duration: ~25–35 minutes",
-            "Wait for all pods in namespace mosip to be Running",
+            "Usually auto-triggered after Step 6",
+            "Deploys mosip-dsf.yaml — all core services",
+            "Duration ~25–35 minutes",
+            "Monitor: kubectl get pods -n mosip",
+            "Wait for partner onboarder job Completed",
         ],
+        "If auto-trigger fails, run manually with same inputs. "
+        "Partner onboarder completion is required before test rigs.",
+        GREEN,
     )
 
-    add_section(
+    add_step_slide(
         prs,
-        "Step 8 — Helmsman Test Rigs (Optional)",
+        8,
+        "Helmsman Test Rigs (Optional)",
         [
+            "Run ONLY after all MOSIP pods Running",
             "Workflow: Deploy Testrigs of mosip using Helmsman",
-            "Run ONLY after all MOSIP pods are Running",
-            "mode=apply | profile=mosip-platform-1.2.0.x",
-            "Deploys: testrigs-dsf.yaml — API/UI/DSL automation",
-            "Optional — skip if not doing automated testing",
+            "mode=apply, profile=mosip-platform-1.2.0.x",
+            "Deploys testrigs-dsf.yaml",
+            "Skip if not doing automated API/UI testing",
         ],
+        "Optional step. Common mistake: running test rigs before MOSIP healthy.",
+        SKY,
     )
 
-    add_section(
+    add_content_slide(
         prs,
-        "10-Step Quick Reference",
+        "Verification & Sign-Off",
         [
-            "1. git checkout -b <env-name>",
-            "2. Edit profiles/mosip/aws.tfvars → push",
-            "3. WireGuard onboard (DRY_RUN=false)",
-            "4. Set captcha secrets (6) + env vars + Rancher API secrets",
-            "5. terraform plan/apply → infra, ENABLE_RANCHER_IMPORT=true",
-            "6. Deploy External services Helmsman → apply",
-            "7. Wait: Deploy Mosip services Helmsman (auto)",
-            "8. Deploy Testrigs Helmsman → apply (optional)",
-            "9. Verify portals + partner onboarder",
-            "10. Sign-off checklist (see guide)",
+            "Infra: nodes Ready, KUBECONFIG secret, Rancher Active",
+            "External: istio-system, keycloak, kafka, minio pods Running",
+            "MOSIP: all mosip namespace pods Running",
+            "Portals: admin, prereg, resident, iam.qajava11.mosip.net",
+            "Partner onboarder Completed — MinIO reports",
+            "Use QA sign-off checklist in SELF_SERVICE_DEPLOYMENT_GUIDE.md",
         ],
+        "Walk through URL checks in browser if VPN connected. "
+        "Provide sign-off checklist template to team leads.",
     )
 
-    add_section(
-        prs,
-        "Secrets Checklist (Per Environment)",
-        [
-            "Auto from WireGuard: TF_WG_CONFIG, CLUSTER_WIREGUARD_WG0, WG1",
-            "Auto from Terraform: KUBECONFIG",
-            "Manual: RANCHER_API_URL, RANCHER_API_TOKEN",
-            "Manual: 6 captcha key pairs (PREREG, ADMIN, RESIDENT × site+secret)",
-            "Variables: DOMAIN_NAME, ENV_NAME, CLUSTER_ID, DB_PORT=5433",
-            "Optional: SLACK_WEBHOOK_URL, SLACK_CHANNEL_NAME",
-        ],
-    )
-
-    add_section(
-        prs,
-        "Verification & Sign-Off URLs",
-        [
-            "After infra: nodes Ready, KUBECONFIG secret exists, Rancher Active",
-            "After External: pods Running in istio-system, keycloak, kafka, minio",
-            "After MOSIP: all mosip namespace pods Running",
-            "Partner onboarder job Completed — check MinIO reports",
-            "Portal URLs (replace qajava11):",
-            "  • https://admin.qajava11.mosip.net",
-            "  • https://prereg.qajava11.mosip.net",
-            "  • https://resident.qajava11.mosip.net",
-            "  • https://iam.qajava11.mosip.net/auth",
-        ],
-    )
-
-    add_section(
+    add_content_slide(
         prs,
         "Common Mistakes to Avoid",
         [
-            "Branch name ≠ GitHub Environment name → secrets not found",
-            "Skipped WireGuard onboard → TF_WG_CONFIG missing",
-            "Missing RANCHER_API_* → import/kubeconfig fails",
-            "Helmsman dry-run instead of apply → validation errors",
-            "Wrong CLUSTER_ID → Grafana/monitoring broken",
-            "postgresql.enabled mismatch in DSF vs tfvars",
-            "Test rigs before MOSIP pods healthy → immediate failures",
-            "mosip_infra_branch=perfm in tfvars — use develop",
+            "❌ Branch ≠ Environment name → secrets not found",
+            "❌ Skipped WireGuard → TF_WG_CONFIG missing",
+            "❌ Missing RANCHER_API_* → import/kubeconfig fails",
+            "❌ Helmsman dry-run → validation errors",
+            "❌ Wrong CLUSTER_ID → monitoring broken",
+            "❌ mosip_infra_branch=perfm → use develop",
+            "❌ Test rigs before MOSIP healthy",
         ],
+        "Quick fire round. Ask audience which they've hit. "
+        "Most common: WireGuard order, dry-run, branch/env mismatch.",
     )
 
-    add_section(
+    add_diagram_slide(
         prs,
-        "Teardown Overview (When Done)",
-        [
-            "1. Optional: Helmsman destroy workflows (MOSIP → external → prereq)",
-            "2. terraform destroy — TERRAFORM_DESTROY=true required",
-            "   • Rancher import auto-disabled during destroy",
-            "   • Removes EC2, cluster, state files from branch",
-            "3. Optional: WireGuard offboard — free VPN peers",
-            "See: docs/ENVIRONMENT_DESTRUCTION_GUIDE.md",
-        ],
+        "Teardown Flow",
+        "When env is done: destroy apps first (optional), then terraform destroy. "
+        "Rancher import auto-disabled — no tfvars edit.",
+        draw_teardown_flow,
+        "Safe environment cleanup",
     )
 
-    add_section(
+    add_content_slide(
         prs,
-        "Documentation & Support",
+        "Documentation & Next Steps",
         [
-            "docs/SELF_SERVICE_DEPLOYMENT_GUIDE.md — complete step-by-step guide",
+            "docs/SELF_SERVICE_DEPLOYMENT_GUIDE.md — full written guide",
             "docs/WORKFLOW_GUIDE.md — GitHub Actions UI walkthrough",
-            "docs/SECRET_GENERATION_GUIDE.md — SSH, AWS, Rancher API tokens",
-            "docs/DSF_CONFIGURATION_GUIDE.md — Helmsman DSF configuration",
-            "docs/ENVIRONMENT_DESTRUCTION_GUIDE.md — safe teardown",
-            "docs/ONBOARDING_GUIDE.md — partner onboarding troubleshooting",
-            ".github/workflows/README.md — workflow parameter reference",
+            "docs/SECRET_GENERATION_GUIDE.md — credentials setup",
+            "docs/ENVIRONMENT_DESTRUCTION_GUIDE.md — teardown details",
+            "docs/DSF_CONFIGURATION_GUIDE.md — Helmsman config",
+            "Share this PPT + guide link with all attendees",
         ],
+        "Close with resources. Offer office hours for first solo deploy. "
+        "Collect feedback on doc gaps.",
     )
 
-    add_title_slide(prs, "Questions?", "Thank you — happy deploying!\nmosip/infra • Self-Service Automation")
+    add_title_slide(
+        prs,
+        "Questions?",
+        "Thank you — happy deploying!\nmosip/infra • Self-Service Automation",
+        "Open floor. Typical questions: captcha setup time, CLUSTER_ID timing, "
+        "what to do when kubeconfig publish times out, destroy re-run scenario.",
+    )
 
     prs.save(OUT)
     print(f"Wrote {OUT} ({len(prs.slides)} slides)")
