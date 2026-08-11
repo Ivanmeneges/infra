@@ -85,8 +85,9 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.DRY_RUN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          chmod +x .github/scripts/wg-offboard.sh
+          chmod +x .github/scripts/wg-env.sh
           args=(
+            offboard
             --env "$INPUT_ENV_NAME"
             --host "$INPUT_JUMPSERVER_HOST"
             --ssh-key "$SSH_KEY_PATH"
@@ -96,7 +97,7 @@ jobs:
           [[ "$INPUT_DELETE_ENV" == "true" ]] && args+=(--delete-environment)
           [[ "$INPUT_REGENERATE" == "true" ]] && args+=(--regenerate-peers)
           [[ "$INPUT_DRY_RUN" == "true" ]] && args+=(--dry-run)
-          .github/scripts/wg-offboard.sh "${args[@]}"
+          .github/scripts/wg-env.sh "${args[@]}"
 
       - name: Cleanup SSH private key
         if: always()

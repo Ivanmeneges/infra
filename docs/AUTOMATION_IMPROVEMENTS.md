@@ -177,7 +177,7 @@ Clearing `assigned.txt` only updates bookkeeping. Anyone who saved a `.conf` fil
 ### Solution
 
 **Workflow:** `WireGuard offboard environment`  
-**Script:** `.github/scripts/wg-offboard.sh`
+**Script:** `.github/scripts/wg-env.sh offboard`
 
 For each peer assigned to the environment:
 
@@ -194,8 +194,8 @@ For each peer assigned to the environment:
 
 | Input | Behaviour |
 |-------|-------------|
-| `REGENERATE_PEERS=true` (default) | After revoke, same `peerN` slot gets **new keys** and a new server stanza — ready for the next `wg-onboard` |
-| `REGENERATE_PEERS=false` | Slot is empty; `wg-onboard` recreates keys on next allocation |
+| `REGENERATE_PEERS=true` (workflow default) | After revoke, same `peerN` slot gets **new keys** and a new server stanza — ready for the next `wg-env.sh onboard` |
+| `REGENERATE_PEERS=false` | Slot is empty; `wg-env.sh onboard` recreates keys on next allocation |
 
 Old `.conf` files become **permanently invalid** after step 1 (server no longer accepts that public key).
 
@@ -210,7 +210,7 @@ Old `.conf` files become **permanently invalid** after step 1 (server no longer 
 | `DELETE_ENVIRONMENT` | `false` (keep env for secrets/vars) or `true` (full cleanup) |
 
 ```bash
-.github/scripts/wg-offboard.sh \
+.github/scripts/wg-env.sh offboard \
   --env qajava11 \
   --host 3.7.248.153 \
   --ssh-key ~/pem/mosip-aws.pem \
@@ -222,13 +222,13 @@ Old `.conf` files become **permanently invalid** after step 1 (server no longer 
 ### Typical lifecycle
 
 ```
-wg-onboard (env A)  →  peers 4,5,6 allocated, secrets published
+wg-env.sh onboard (env A)  →  peers 4,5,6 allocated, secrets published
         ↓
 env A decommissioned
         ↓
-wg-offboard (env A) →  revoke on server, delete secrets, regenerate peer slots
+wg-env.sh offboard (env A) →  revoke on server, delete secrets, regenerate peer slots
         ↓
-wg-onboard (env B)  →  may reuse peer4/5/6 with NEW keys for env B
+wg-env.sh onboard (env B)  →  may reuse peer4/5/6 with NEW keys for env B
                       assigned.txt is rewritten in peer-number order (peer4
                       appears after peer3, not appended at the end of the file)
 ```

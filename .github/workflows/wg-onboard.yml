@@ -5,7 +5,7 @@ name: WireGuard onboard environment
 # GitHub *environment* secrets (TF_WG_CONFIG, CLUSTER_WIREGUARD_WG0/WG1) so a
 # QA/dev team can run the Terraform + Helmsman workflows without DevOps.
 #
-# Requires .github/scripts/wg-onboard.sh (mosip/infra PR #253).
+# Requires .github/scripts/wg-env.sh (onboard subcommand).
 
 on:
   workflow_dispatch:
@@ -94,8 +94,9 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.DRY_RUN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          chmod +x .github/scripts/wg-onboard.sh
+          chmod +x .github/scripts/wg-env.sh
           args=(
+            onboard
             --env "$INPUT_ENV_NAME"
             --host "$INPUT_JUMPSERVER_HOST"
             --ssh-key "$SSH_KEY_PATH"
@@ -105,7 +106,7 @@ jobs:
           )
           [[ -n "$INPUT_TICKET" ]] && args+=(--ticket "$INPUT_TICKET")
           [[ "$INPUT_DRY_RUN" == "true" ]] && args+=(--dry-run)
-          .github/scripts/wg-onboard.sh "${args[@]}"
+          .github/scripts/wg-env.sh "${args[@]}"
 
       - name: Cleanup SSH private key
         if: always()

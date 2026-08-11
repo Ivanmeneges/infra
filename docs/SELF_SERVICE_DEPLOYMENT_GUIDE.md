@@ -71,7 +71,7 @@ Pick the MOSIP platform version folder (`1.2.0.x` vs `1.2.1.x`) to match your re
 | Task | Self-service (automation branch) | Legacy (`develop` without automation) |
 |------|----------------------------------|---------------------------------------|
 | WireGuard peer allocation | **Workflow:** WireGuard onboard environment | Manual SSH to jump server |
-| `TF_WG_CONFIG`, `CLUSTER_WIREGUARD_WG0/WG1` | Auto-published by wg-onboard | Manual copy to GitHub secrets |
+| `TF_WG_CONFIG`, `CLUSTER_WIREGUARD_WG0/WG1` | Auto-published by `wg-env.sh onboard` | Manual copy to GitHub secrets |
 | Rancher cluster registration | **Terraform:** `ENABLE_RANCHER_IMPORT=true` | Paste import URL in tfvars |
 | Rancher group access (multi-team) | **Terraform:** `ENABLE_RANCHER_IMPORT=true` + `rancher-access-grants.json` | Manual Rancher UI |
 | `KUBECONFIG` secret | **Terraform:** `PUBLISH_KUBECONFIG=true` | Manual copy from Terraform output |
