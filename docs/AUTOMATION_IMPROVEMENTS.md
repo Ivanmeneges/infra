@@ -229,6 +229,8 @@ env A decommissioned
 wg-offboard (env A) →  revoke on server, delete secrets, regenerate peer slots
         ↓
 wg-onboard (env B)  →  may reuse peer4/5/6 with NEW keys for env B
+                      assigned.txt is rewritten in peer-number order (peer4
+                      appears after peer3, not appended at the end of the file)
 ```
 
 ---

@@ -9,6 +9,8 @@
 #      like peer66 before peer101). assigned.txt is the source of truth; if a
 #      peer directory or assigned.txt line is missing, create it on the VM first.
 #      Append assignments for the new environment - one peer per secret.
+#      Rewrites assigned.txt sorted by peer number so gap-filled slots (e.g.
+#      peer4 after peer3) stay in order for manual review.
 #      Supports two assigned.txt layouts:
 #         peerN: username          (legacy colon format on /home/ubuntu)
 #         peerN env(SECRET_NAME)   (MOSIP per-secret format)
@@ -289,9 +291,41 @@ parse_assigned_line() {
   return 0
 }
 
-peer_label_is_taken() {
+peer_num_from_token() {
+  local token="$1"
+  [[ "$token" =~ ^peer([0-9]+)$ ]] || { echo "999999"; return 0; }
+  echo "${BASH_REMATCH[1]}"
+}
+
+peer_label_is_free() {
   local label="${1//[[:space:]]/}"
-  [[ -n "$label" && "${label,,}" != "available" ]]
+  [[ -z "$label" ]] && return 0
+  case "${label,,}" in
+    available|free|unused|unassigned|none|na|n/a|-) return 0 ;;
+  esac
+  return 1
+}
+
+peer_label_is_taken() {
+  local label="$1"
+  ! peer_label_is_free "$label"
+}
+
+sort_assigned_file() {
+  local file="$1" dir tmp line peer n
+  [[ -f "$file" ]] || return 0
+  dir="$(dirname "$file")"
+  tmp="$(mktemp "$dir/.assigned.XXXXXX")" || {
+    echo "ERROR: cannot create temp file in $dir" >&2
+    return 1
+  }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    peer="$(normalize_peer_token "$(awk '{print $1}' <<<"$line")")"
+    n="$(peer_num_from_token "$peer")"
+    printf '%05d\t%s\n' "$n" "$line"
+  done < "$file" | sort -n | cut -f2- > "$tmp"
+  atomic_replace_file "$tmp" "$file"
 }
 
 assigned_file_writable() {
@@ -529,14 +563,17 @@ run_allocation() {
   fi
 
   next_free() {
-    local i pnum
+    local i
     for ((i = 1; i <= MAX_PEERS; i++)); do
       peer="peer${i}"
-      if [[ -z "${TAKEN[$peer]:-}" && -z "${CHOSEN[$peer]:-}" ]]; then
-        ensure_peer_conf "$i" || return 1
+      if [[ -n "${TAKEN[$peer]:-}" || -n "${CHOSEN[$peer]:-}" ]]; then
+        continue
+      fi
+      if ensure_peer_conf "$i"; then
         echo "$peer"
         return 0
       fi
+      echo "WARN: skipping $peer (could not ensure peer config; trying next slot)" >&2
     done
     return 1
   }
@@ -575,6 +612,7 @@ run_allocation() {
       [[ "$record_wg0" == "true" ]] && record_assignment "$wg0" "${LABEL}(CLUSTER_WIREGUARD_WG0)" "$format" "$ASSIGNED_FILE"
       [[ "$record_wg1" == "true" ]] && record_assignment "$wg1" "${LABEL}(CLUSTER_WIREGUARD_WG1)" "$format" "$ASSIGNED_FILE"
     fi
+    sort_assigned_file "$ASSIGNED_FILE" || return 1
   fi
 
   printf 'ASSIGNED_FORMAT=%s\nREUSED=%s\nTF_PEER=%s\nWG0_PEER=%s\nWG1_PEER=%s\nRECORD_TF=%s\nRECORD_WG0=%s\nRECORD_WG1=%s\n' \

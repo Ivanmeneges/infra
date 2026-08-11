@@ -143,6 +143,38 @@ normalize_peer_token() {
   printf '%s' "$token"
 }
 
+peer_num_from_token() {
+  local token="$1"
+  [[ "$token" =~ ^peer([0-9]+)$ ]] || { echo "999999"; return 0; }
+  echo "${BASH_REMATCH[1]}"
+}
+
+atomic_replace_file() {
+  local src="$1" dest="$2"
+  if ! mv -f "$src" "$dest"; then
+    rm -f "$src"
+    echo "ERROR: cannot update $dest (check ownership/permissions)" >&2
+    return 1
+  fi
+}
+
+sort_assigned_file() {
+  local file="$1" dir tmp line peer n
+  [[ -f "$file" ]] || return 0
+  dir="$(dirname "$file")"
+  tmp="$(mktemp "$dir/.assigned.XXXXXX")" || {
+    echo "ERROR: cannot create temp file in $dir" >&2
+    return 1
+  }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    peer="$(normalize_peer_token "$(awk '{print $1}' <<<"$line")")"
+    n="$(peer_num_from_token "$peer")"
+    printf '%05d\t%s\n' "$n" "$line"
+  done < "$file" | sort -n | cut -f2- > "$tmp"
+  atomic_replace_file "$tmp" "$file"
+}
+
 parse_assigned_line() {
   local line="${1//$'\r'/}"
   local peer rest
@@ -381,6 +413,8 @@ for peer in "${PEERS[@]}"; do
   regenerate_peer "$n"
   remove_peer_line "$peer" "$ASSIGNED_FILE"
 done
+
+sort_assigned_file "$ASSIGNED_FILE"
 
 printf 'PEERS=%s\n' "$(IFS=,; echo "${PEERS[*]}")"
 REMOTE_OFFBOARD
