@@ -10,8 +10,9 @@ This guide provides step-by-step instructions for generating all required secret
 4. [GitHub Personal Access Token (GH_INFRA_PAT)](#4-github-personal-access-token-gh_infra_pat) — required for signup workflow auto-trigger and repository operations
 5. [WireGuard VPN Configuration](#5-wireguard-vpn-configuration)
 6. [Kubernetes Config (KUBECONFIG)](#6-kubernetes-config-kubeconfig)
-7. [reCAPTCHA Keys](#7-recaptcha-keys)
-8. [How to Add Secrets to GitHub](#8-how-to-add-secrets-to-github)
+7. [Rancher API Credentials](#7-rancher-api-credentials)
+8. [reCAPTCHA Keys](#8-recaptcha-keys)
+9. [How to Add Secrets to GitHub](#9-how-to-add-secrets-to-github)
 
 ---
 
@@ -439,7 +440,23 @@ KUBECONFIG is a configuration file that contains credentials and connection deta
 
 ### How to Get KUBECONFIG
 
-KUBECONFIG is **automatically generated** by Terraform after deploying infrastructure.
+KUBECONFIG can be obtained in two ways:
+
+#### Option A — Automatic (recommended when using Rancher)
+
+When you run **terraform plan / apply** with `PUBLISH_KUBECONFIG=true` (default) and Rancher import completes:
+
+1. The workflow calls `rancher-fetch-kubeconfig.sh` after the cluster reaches `state=active` in Rancher.
+2. It runs `gh secret set KUBECONFIG --env <branch-name>` automatically.
+3. No manual download is required before Helmsman deploy.
+
+**Requires environment secrets:** `RANCHER_API_URL`, `RANCHER_API_TOKEN`, `GH_INFRA_PAT`
+
+See **[Rancher Workflow Guide](RANCHER_WORKFLOW_GUIDE.md)** for the full apply flow.
+
+#### Option B — Manual (from Terraform artifacts or node files)
+
+KUBECONFIG is also generated on disk during Terraform apply.
 
 #### Step 1: Deploy Infrastructure First
 ```bash
@@ -531,7 +548,46 @@ users:
 
 ---
 
-## 7. reCAPTCHA Keys
+## 7. Rancher API Credentials
+
+### What are they?
+
+Credentials for the Rancher REST API used by GitHub Actions to register clusters, grant access, and publish kubeconfig — without manual Rancher UI steps.
+
+### Why do you need them?
+
+- **Automatic cluster import** (`ENABLE_RANCHER_IMPORT=true` in terraform workflow)
+- **Automatic KUBECONFIG publish** (`PUBLISH_KUBECONFIG=true`)
+- **Team RBAC grants** after import
+
+### How to create
+
+1. **Deploy observ-infra** and complete Rancher UI initial setup.
+2. **Create an API token** in Rancher:
+   - Rancher UI → User avatar → Account & API Keys → Create API Key
+   - Scope: no expiration (or match your rotation policy)
+   - Save the bearer token securely (shown once)
+3. **Add environment secrets** (Settings → Environments → `<branch-name>` → Secrets):
+
+| Secret | Example value | Notes |
+|--------|---------------|-------|
+| `RANCHER_API_URL` | `https://rancher.perfm.mosip.net` | Base URL only — **no** `/v3` suffix |
+| `RANCHER_API_TOKEN` | `token-xxxxx:yyyyy...` | Full bearer token from Rancher |
+
+### Where they are used
+
+- `.github/workflows/terraform.yml` — import URL minting, post-apply import, grants, kubeconfig publish
+- Scripts: `rancher-register-cluster.sh`, `rancher-fetch-kubeconfig.sh`, `rancher-grant-cluster-access-batch.sh`
+
+### Common pitfalls
+
+- ❌ Including `/v3` in `RANCHER_API_URL` (API calls will fail)
+- ❌ Using repository secrets instead of **environment** secrets tied to the deploy branch
+- ❌ Expired or revoked API token after long gap between plan and apply (workflow refreshes URL before apply when `ENABLE_RANCHER_IMPORT=true`)
+
+---
+
+## 8. reCAPTCHA Keys
 
 ### What is it?
 reCAPTCHA is Google's service that protects websites from bots and spam by verifying users are human.
@@ -617,7 +673,7 @@ hooks:
 
 ---
 
-## 8. How to Add Secrets to GitHub
+## 9. How to Add Secrets to GitHub
 
 ### Understanding Secret Types
 

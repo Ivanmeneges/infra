@@ -38,24 +38,33 @@ Your Repository
 - ✅ **Checked** → Terraform will create actual AWS servers
 - ☐ **Unchecked** → Terraform only shows you the plan (no changes made)
 
-#### Rancher Import Option
+#### Rancher Import and Kubeconfig Options
 
 | Setting | What It Does | When to Use |
 |---------|--------------|-------------|
-| **True** | Automatically imports cluster into Rancher UI | If you want centralized cluster management |
-| **False** | Cluster runs independently | For standalone deployments |
+| **ENABLE_RANCHER_IMPORT = True** | Mints import URL via Rancher API, applies import after Terraform, optional RBAC | Recommended when `observ-infra` is deployed and `RANCHER_API_*` secrets exist |
+| **ENABLE_RANCHER_IMPORT = False** | No API import; use manual `rancher_import_url` in tfvars or skip Rancher | Standalone clusters or manual import path |
+| **PUBLISH_KUBECONFIG = True** (default) | Fetches kubeconfig from Rancher and sets branch `KUBECONFIG` env secret | Before Helmsman deploy (automates Step 4b below) |
+| **PUBLISH_KUBECONFIG = False** | Skip auto-publish; add `KUBECONFIG` manually | When Rancher API unavailable or debugging |
+
+**Required environment secrets for automatic path:**
+- `RANCHER_API_URL` — Rancher base URL (no `/v3`)
+- `RANCHER_API_TOKEN` — Rancher API bearer token
+- `GH_INFRA_PAT` — for publishing `KUBECONFIG` secret
 
 **Relationship with Terraform Apply:**
 ```
-If Terraform Apply = ✅ AND Rancher Import = True
- → Cluster is deployed AND imported into Rancher
+If Terraform Apply = ✅ AND ENABLE_RANCHER_IMPORT = True
+ → Cluster deployed, imported to Rancher, kubeconfig published (if PUBLISH_KUBECONFIG=true)
 
-If Terraform Apply = ✅ AND Rancher Import = False
- → Cluster is deployed but NOT imported
+If Terraform Apply = ✅ AND ENABLE_RANCHER_IMPORT = False
+ → Cluster deployed; import via tfvars or skip Rancher
 
 If Terraform Apply = ☐ (unchecked)
- → Dry run only, nothing happens (Rancher import setting is ignored)
+ → Dry run only (Rancher settings ignored)
 ```
+
+Full step-by-step flow: **[Rancher Workflow Guide](RANCHER_WORKFLOW_GUIDE.md)**
 
 ---
 

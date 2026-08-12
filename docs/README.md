@@ -44,7 +44,7 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 - **Terraform Infrastructure**: See [terraform/README.md](../terraform/README.md)
 - **Helmsman Deployment**: See [Helmsman/README.md](../Helmsman/README.md)
 - **WireGuard VPN Setup**: See [terraform/base-infra/WIREGUARD_SETUP.md](../terraform/base-infra/WIREGUARD_SETUP.md)
-- **GitHub Actions Workflows**: See [.github/workflows/]../.github/workflows/)
+- **GitHub Actions Workflows**: See [.github/workflows/README.md](../.github/workflows/README.md)
 
 ---
 
@@ -60,6 +60,8 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 | **[Workflow Guide](WORKFLOW_GUIDE.md)** | Visual GitHub Actions workflow navigation | Everyone during deployment |
 | **[DSF Configuration Guide](DSF_CONFIGURATION_GUIDE.md)** | Helmsman configuration file explained in detail | Everyone before Helmsman deployment |
 | **[Environment Destruction Guide](ENVIRONMENT_DESTRUCTION_GUIDE.md)** | Safe resource cleanup and cost management | Everyone when decommissioning |
+| **[Rancher Workflow Guide](RANCHER_WORKFLOW_GUIDE.md)** | Automatic Rancher import, kubeconfig publish, destroy flow | When using observ-infra + infra |
+| **[Self-Service Deployment Guide](SELF_SERVICE_DEPLOYMENT_GUIDE.md)** | End-to-end QA/dev self-service deploy and destroy | QA teams deploying without DevOps |
 | **[Helmsman Destroy Guide](HELMSMAN_DESTROY_GUIDE.md)** | How to safely undeploy MOSIP services from Kubernetes | Everyone when removing services |
 
 ### Component-Specific Documentation
@@ -143,6 +145,9 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 | Configure PostgreSQL | [DSF Configuration Guide - PostgreSQL](DSF_CONFIGURATION_GUIDE.md#2-postgresql-configuration) |
 | Add reCAPTCHA keys | [DSF Configuration Guide - reCAPTCHA](DSF_CONFIGURATION_GUIDE.md#3-recaptcha-configuration) |
 | Delete my environment | [Environment Destruction Guide](ENVIRONMENT_DESTRUCTION_GUIDE.md) |
+| Set up Rancher import + kubeconfig automatically | [Rancher Workflow Guide](RANCHER_WORKFLOW_GUIDE.md) |
+| Deploy end-to-end as QA without DevOps | [Self-Service Deployment Guide](SELF_SERVICE_DEPLOYMENT_GUIDE.md) |
+| Create Rancher API token | [Secret Generation Guide — Rancher API](SECRET_GENERATION_GUIDE.md#7-rancher-api-credentials) |
 | Check costs after deletion | [Environment Destruction Guide - Cost Monitoring](ENVIRONMENT_DESTRUCTION_GUIDE.md#cost-monitoring) |
 | Understand workflow names | [Workflow Guide - Understanding Workflow Names](WORKFLOW_GUIDE.md#understanding-workflow-names) |
 

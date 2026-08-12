@@ -68,10 +68,54 @@ This directory contains GitHub Actions workflows for automated MOSIP deployment:
 ### Step 4: Destroy Infrastructure (When Needed)
 
 1. **Navigate**: Actions → "terraform destroy"
-2. **Configure**: Use same parameters as deployment
-3. **Confirm**: Set `TERRAFORM_DESTROY: true`
-4. **PostgreSQL Cleanup**: Automatically handled
-5. **Execute**: Click "Run workflow"
+2. **Configure**: Use same parameters as deployment; set `TERRAFORM_DESTROY: true`
+3. **Rancher**: Import is automatically disabled during destroy (runtime tfvars override)
+4. **Execute**: Click "Run workflow"
+5. **Note**: Branch names with parentheses (e.g. `perfm(issue1919)`) are supported
+
+See [Rancher Workflow Guide](../docs/RANCHER_WORKFLOW_GUIDE.md#terraform-destroy-workflow--complete-step-flow) for the full destroy step sequence.
+
+## Rancher Integration (infra component)
+
+When `observ-infra` (Rancher UI) is deployed, the **terraform plan / apply** workflow supports automatic cluster import and kubeconfig publishing.
+
+### Apply workflow — infra Rancher steps
+
+After Terraform init/validate (and WireGuard for non–base-infra), the `infra` workflow runs these **additional steps** when configured:
+
+| Step | Condition | Action |
+|------|-----------|--------|
+| Generate Rancher import URL via API | `ENABLE_RANCHER_IMPORT=true` | Mint import command → runtime tfvars |
+| Refresh Rancher import URL before apply | import enabled + apply | Fresh token immediately before apply |
+| Apply Rancher import on cluster | import enabled + apply success | SSH to control plane; apply manifest |
+| Grant Rancher cluster access | import enabled + apply success | Optional RBAC from grants JSON |
+| Publish KUBECONFIG from Rancher | `PUBLISH_KUBECONFIG=true` + apply success | Wait for active; set env secret |
+
+Full sequence diagram and troubleshooting: **[Rancher Workflow Guide](../docs/RANCHER_WORKFLOW_GUIDE.md)**
+
+### Required environment secrets (Rancher automation)
+
+| Secret | Purpose |
+|--------|---------|
+| `RANCHER_API_URL` | Rancher base URL (no `/v3`) |
+| `RANCHER_API_TOKEN` | API bearer token |
+| `GH_INFRA_PAT` | Publish `KUBECONFIG` env secret + git push |
+
+### Rancher workflow inputs (infra)
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ENABLE_RANCHER_IMPORT` | `false` | Auto-register cluster via Rancher API |
+| `RANCHER_CLUSTER_NAME` | branch name | Cluster name in Rancher UI |
+| `PUBLISH_KUBECONFIG` | `true` | Auto-set branch `KUBECONFIG` secret |
+| `GRANT_GROUP_ACCESS` | `false` | Apply team grants from JSON catalog |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | `false` | Extra cluster-owner group |
+| `RANCHER_CLUSTER_OWNER_GROUP` | `''` | Group name for owner override |
+
+### Destroy workflow — Rancher handling
+
+The destroy workflow includes **Prepare destroy env (disable Rancher import)**, which writes `enable_rancher_import=false` via runtime tfvars so profile tfvars cannot block teardown.
+
 
 ## PostgreSQL Integration
 
@@ -152,7 +196,16 @@ graph TD
  DECISION -->|Plan Only| OUTPUT[Show Plan Output]
  DECISION -->|Apply| APPLY[terraform apply]
  
- APPLY --> ENCRYPT[Encrypt State with GPG]
+ APPLY --> RANCHER{Rancher import<br/>enabled?}
+ RANCHER -->|Yes| POSTIMPORT[Post-apply SSH import]
+ RANCHER -->|No| ENCRYPT
+ POSTIMPORT --> GRANTS{Grant access?}
+ GRANTS -->|Optional| PUBLISH{Publish KUBECONFIG?}
+ GRANTS -->|Skip| PUBLISH
+ PUBLISH -->|Yes| KUBECFG[Fetch kubeconfig → env secret]
+ PUBLISH -->|No| ENCRYPT
+ KUBECFG --> ENCRYPT[Encrypt State with GPG]
+ APPLY -->|No Rancher| ENCRYPT
  ENCRYPT --> SUCCESS[Deployment Complete]
  OUTPUT --> COMPLETE[Workflow Complete]
  SUCCESS --> COMPLETE
@@ -235,6 +288,12 @@ REMOTE_BACKEND_CONFIG: aws:bucket-name:region
 | `TERRAFORM_APPLY` | Execute apply after plan | `false` | `true` \| `false` |
 | `TERRAFORM_DESTROY` | Destroy infrastructure | `false` | `true` \| `false` |
 | `ENABLE_STATE_LOCKING` | Enable DynamoDB state locking | `false` | `true` \| `false` |
+| `ENABLE_RANCHER_IMPORT` | Auto-import cluster to Rancher via API (`infra` only) | `false` | `true` \| `false` |
+| `RANCHER_CLUSTER_NAME` | Rancher cluster name (defaults to branch) | branch name | string |
+| `PUBLISH_KUBECONFIG` | Publish kubeconfig to env secret after apply | `true` | `true` \| `false` |
+| `GRANT_GROUP_ACCESS` | Apply team RBAC from grants catalog | `false` | `true` \| `false` |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | Grant extra cluster-owner group | `false` | `true` \| `false` |
+| `RANCHER_CLUSTER_OWNER_GROUP` | Group name for owner override | `''` | string |
 
 **Note**: PostgreSQL configuration is set in Terraform `.tfvars` files, not as workflow parameters.
 
@@ -274,7 +333,13 @@ GOOGLE_CREDENTIALS: |
 
 # Optional: Slack notifications
 SLACK_WEBHOOK_URL: https://hooks.slack.com/services/...
+
+# Rancher automation (environment secrets — per deploy branch)
+RANCHER_API_URL: https://rancher.your-env.mosip.net
+RANCHER_API_TOKEN: token-xxxxx:yyyyy...
 ```
+
+See [Rancher Workflow Guide](../docs/RANCHER_WORKFLOW_GUIDE.md) for when these are required.
 
 ### Security Best Practices
 - **GPG encryption**: All state files encrypted before commit

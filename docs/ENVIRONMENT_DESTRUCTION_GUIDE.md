@@ -46,8 +46,15 @@ Parameters:
 ├─ Cloud Provider: aws
 ├─ Component: infra
 ├─ Profile: mosip/esignet
-└─ Backend: local (or s3, match your deployment configuration)
+├─ Backend: local (or s3, match your deployment configuration)
+└─ TERRAFORM_DESTROY: true   ← REQUIRED to confirm destruction
 ```
+
+> **Rancher:** The destroy workflow automatically disables Rancher import via runtime tfvars (`enable_rancher_import=false`). You do not need to edit profile `aws.tfvars` before teardown.
+
+> **Branch names:** Branches with parentheses (e.g. `perfm(issue1919)`) are supported.
+
+See [Rancher Workflow Guide — Destroy](RANCHER_WORKFLOW_GUIDE.md#terraform-destroy-workflow--complete-step-flow) for the full step list.
 
 #### 3. Wait for Completion
 

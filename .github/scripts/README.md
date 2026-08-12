@@ -17,6 +17,12 @@ These scripts handle complex operations that would otherwise make workflow files
 | `setup-gpg.sh` | Configure GPG environment for encryption | terraform.yml, terraform-destroy.yml | Active |
 | `generate-pg-secrets.sh` | Generate PostgreSQL secrets (legacy) | N/A | Legacy |
 | `cleanup-state-locking.sh` | Clean up DynamoDB state locks | terraform-destroy.yml | Active |
+| `rancher-register-cluster.sh` | Mint Rancher import URL; optional `--apply-on-host` SSH import | terraform.yml | Active |
+| `rancher-fetch-kubeconfig.sh` | Poll for active cluster; fetch kubeconfig YAML | terraform.yml | Active |
+| `write-rancher-runtime-tfvars.sh` | Runtime enable/disable Rancher import (apply vs destroy) | terraform.yml, terraform-destroy.yml | Active |
+| `rancher-grant-cluster-access.sh` | Single-group Rancher RBAC grant | terraform.yml (via batch) | Active |
+| `rancher-grant-cluster-access-batch.sh` | Batch RBAC from grants catalog | terraform.yml | Active |
+| `build-rancher-workflow-patch.sh` | Merge workflow inputs with grants JSON | terraform.yml | Active |
 | `test-*.sh` | Various testing and validation scripts | Manual testing | Active |
 | `validate-workflow-integration.sh` | Validate workflow integration | Manual testing | Active |
 | `setup-s3-backend.sh` | Empty placeholder | N/A | Placeholder |
@@ -121,6 +127,72 @@ These scripts handle complex operations that would otherwise make workflow files
 **Usage**:
 ```bash
 ./cleanup-state-locking.sh --provider <provider> --table-name <dynamodb-table>
+```
+
+## Rancher Integration Scripts
+
+Used by `terraform.yml` (apply) and `terraform-destroy.yml` (disable import on destroy). See **[Rancher Workflow Guide](../../docs/RANCHER_WORKFLOW_GUIDE.md)**.
+
+### rancher-register-cluster.sh
+
+**Purpose**: Register or refresh a downstream cluster in Rancher via API; optionally apply import manifest on control plane via SSH.
+
+**Usage**:
+```bash
+# Mint import command (stdout: kubectl apply -f ...)
+./rancher-register-cluster.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$TOKEN" \
+  --cluster-name "$CLUSTER_NAME"
+
+# Post-apply: apply fresh manifest on control plane
+./rancher-register-cluster.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$TOKEN" \
+  --cluster-name "$CLUSTER_NAME" \
+  --apply-on-host \
+  --ssh-key "$SSH_KEY" \
+  --ssh-host "$CONTROL_PLANE_IP" \
+  --kubeconfig-remote "/home/ubuntu/.kube/${CLUSTER}-CONTROL-PLANE-NODE-1.yaml"
+```
+
+### rancher-fetch-kubeconfig.sh
+
+**Purpose**: Wait for Rancher cluster `state=active`, then fetch kubeconfig YAML via `generateKubeconfig` API action.
+
+**Usage**:
+```bash
+MAX_ATTEMPTS=24 SLEEP_SECONDS=15 \
+  ./rancher-fetch-kubeconfig.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$TOKEN" \
+  --cluster-name "$CLUSTER_NAME"
+```
+
+### write-rancher-runtime-tfvars.sh
+
+**Purpose**: Write a temporary `-var-file` to enable or disable Rancher import without editing profile tfvars.
+
+**Usage**:
+```bash
+# Apply path — enable import with minted command
+./write-rancher-runtime-tfvars.sh --out /tmp/rancher.tfvars --enable true --import-cmd "$IMPORT_CMD"
+
+# Destroy path — disable import so preconditions do not block teardown
+./write-rancher-runtime-tfvars.sh --out /tmp/rancher.tfvars --enable false
+```
+
+### rancher-grant-cluster-access-batch.sh
+
+**Purpose**: Apply RBAC grants from `.github/config/rancher-access-grants.json` (with optional workflow patch).
+
+**Usage**:
+```bash
+./rancher-grant-cluster-access-batch.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$TOKEN" \
+  --cluster-name "$CLUSTER_NAME" \
+  --grants-file "$GITHUB_WORKSPACE/.github/config/rancher-access-grants.json"
 ```
 
 ## Legacy Scripts

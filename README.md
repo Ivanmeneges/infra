@@ -795,6 +795,10 @@ This step creates MOSIP Kubernetes cluster, PostgreSQL (if enabled), ActiveMQ (i
 
 If you have deployed **observ-infra** (Rancher management cluster), you can import your main infra cluster into Rancher for centralized monitoring and management.
 
+> **Recommended:** Use the **automatic CI path** documented in **[Rancher Workflow Guide](docs/RANCHER_WORKFLOW_GUIDE.md)** or the step-by-step **[Self-Service Deployment Guide](docs/SELF_SERVICE_DEPLOYMENT_GUIDE.md)** — set `ENABLE_RANCHER_IMPORT=true` and `PUBLISH_KUBECONFIG=true` in the **terraform plan / apply** workflow.
+
+**Alternative — manual import via tfvars** (below) remains supported when API tokens are unavailable or for debugging.
+
 **Step 1: Generate Rancher Import URL**
 
 1. **Access Rancher UI:**
@@ -1034,6 +1038,14 @@ Configure the required secrets for Helmsman deployments in **Repository → Sett
 - Verify GitHub Actions have access to your deployment branch
 
 2. **Configure KUBECONFIG Secret:**
+
+ **Option A — Automatic (recommended with Rancher):**
+
+When `PUBLISH_KUBECONFIG=true` in the terraform apply workflow, the `KUBECONFIG` environment secret is set automatically after Rancher import completes. Verify under **Settings → Environments → `<branch>` → Secrets**.
+
+See **[Rancher Workflow Guide](docs/RANCHER_WORKFLOW_GUIDE.md)**.
+
+ **Option B — Manual:**
 
  **Locate the Kubernetes config file:**
 

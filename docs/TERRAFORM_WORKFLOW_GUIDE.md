@@ -46,16 +46,30 @@
 - **Relationship with Rancher Import:**
 
 ```
-If Terraform Apply = ✅ AND Rancher Import = True
-→ Infrastructure deployed AND cluster imported to Rancher UI
+If Terraform Apply = ✅ AND ENABLE_RANCHER_IMPORT = True
+→ Workflow mints import URL via Rancher API, applies infra, re-imports on control plane,
+  optionally grants RBAC, and (if PUBLISH_KUBECONFIG=true) sets KUBECONFIG env secret
 
-If Terraform Apply = ✅ AND Rancher Import = False 
-→ Infrastructure deployed but cluster runs standalone
+If Terraform Apply = ✅ AND ENABLE_RANCHER_IMPORT = False
+→ Infrastructure deployed; use manual rancher_import_url in tfvars OR skip Rancher
 
 If Terraform Apply = ☐ (unchecked - dry run)
 → Nothing happens, just shows plan
-→ Rancher Import setting is ignored
+→ Rancher settings are ignored
 ```
+
+See **[Rancher Workflow Guide](RANCHER_WORKFLOW_GUIDE.md)** for the complete step sequence, secrets, and troubleshooting.
+
+### Rancher-related workflow inputs (infra component)
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ENABLE_RANCHER_IMPORT` | `false` | Auto-register cluster via Rancher API (needs `RANCHER_API_*` env secrets) |
+| `RANCHER_CLUSTER_NAME` | branch name | Name in Rancher UI (e.g. `performance`) |
+| `PUBLISH_KUBECONFIG` | `true` | Fetch kubeconfig from Rancher and set branch `KUBECONFIG` secret |
+| `GRANT_GROUP_ACCESS` | `false` | Apply team access from `.github/config/rancher-access-grants.json` |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | `false` | Grant an additional cluster-owner group |
+| `RANCHER_CLUSTER_OWNER_GROUP` | `''` | Group name when owner override is enabled |
 
 ## Backend Configuration Options
 
