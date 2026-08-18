@@ -17,8 +17,7 @@ These scripts handle complex operations that would otherwise make workflow files
 | `setup-gpg.sh` | Configure GPG environment for encryption | terraform.yml, terraform-destroy.yml | Active |
 | `generate-pg-secrets.sh` | Generate PostgreSQL secrets (legacy) | N/A | Legacy |
 | `cleanup-state-locking.sh` | Clean up DynamoDB state locks | terraform-destroy.yml | Active |
-| `mint-rancher-runtime-tfvars.sh` | Mint Rancher import URL + write runtime tfvars | terraform.yml | Active |
-| `write-rancher-runtime-tfvars.sh` | Write `$RUNNER_TEMP/rancher-runtime.tfvars` overrides | terraform.yml, terraform-destroy.yml | Active |
+| `write-rancher-runtime-tfvars.sh` | Write or mint+write `$RUNNER_TEMP/rancher-runtime.tfvars` | terraform.yml, terraform-destroy.yml | Active |
 | `rancher-register-cluster.sh` | Register/import cluster via Rancher API | terraform.yml | Active |
 | `rancher-fetch-kubeconfig.sh` | Poll active + fetch kubeconfig from Rancher API | terraform.yml | Active |
 | `rancher-grant-cluster-access.sh` | Multi-team cluster RBAC (apply/grant-one/list/build-patch) | terraform.yml | Active |
@@ -96,29 +95,27 @@ These scripts handle complex operations that would otherwise make workflow files
 
 Used when `ENABLE_RANCHER_IMPORT` is enabled on the **infra** terraform workflow. See also [`.github/config/README.md`](../config/README.md) for RBAC catalog and role template ids.
 
-### mint-rancher-runtime-tfvars.sh
+### write-rancher-runtime-tfvars.sh
 
-**Purpose**: Single entry point for plan-time and pre-apply Rancher import URL minting (calls `rancher-register-cluster.sh` + `write-rancher-runtime-tfvars.sh`).
+**Purpose**: Writes ephemeral `enable_rancher_import` / `rancher_import_url` overrides (never committed to git). Can mint the import URL via Rancher API or accept a pre-minted `--import-cmd`.
 
 **Usage**:
 ```bash
-./mint-rancher-runtime-tfvars.sh \
+# Mint + write (terraform plan / pre-apply refresh)
+./write-rancher-runtime-tfvars.sh \
+  --out "$RUNNER_TEMP/rancher-runtime.tfvars" \
+  --enable true \
   --rancher-url "$RANCHER_URL" \
   --token "$TOKEN" \
   --cluster-name "$ENV_NAME" \
-  --out "$RUNNER_TEMP/rancher-runtime.tfvars" \
   --phase plan   # or apply
-```
 
-### write-rancher-runtime-tfvars.sh
-
-**Purpose**: Writes ephemeral `enable_rancher_import` / `rancher_import_url` overrides (never committed to git).
-
-**Usage**:
-```bash
+# Write only (manual / destroy)
 ./write-rancher-runtime-tfvars.sh --out <path> --enable true --import-cmd '"kubectl apply -f https://..."'
-./write-rancher-runtime-tfvars.sh --out <path> --enable false   # destroy workflow
+./write-rancher-runtime-tfvars.sh --out <path> --enable false
 ```
+
+When minting with `GITHUB_ENV` set, appends `RANCHER_RUNTIME_VARS_FILE=<out>`.
 
 ### rancher-register-cluster.sh
 
@@ -235,12 +232,11 @@ Some scripts are empty placeholders for future functionality:
 2. `decrypt-state.sh` - Decrypt existing state files
 3. `configure-backend.sh` - Generate backend configuration
 4. `setup-cloud-storage.sh` - Create remote storage (if remote backend)
-5. `mint-rancher-runtime-tfvars.sh` - Mint Rancher import URL (when enabled)
-6. `write-rancher-runtime-tfvars.sh` - Runtime Rancher tfvars (also via mint helper)
-7. `rancher-register-cluster.sh` - Post-apply import on control plane (SSH)
-8. `rancher-grant-cluster-access.sh` - Multi-team Rancher RBAC
-9. `rancher-fetch-kubeconfig.sh` - Publish KUBECONFIG environment secret
-10. `encrypt-state.sh` - Encrypt state files after operations (only after successful plan)
+5. `write-rancher-runtime-tfvars.sh` - Mint/write or disable Rancher runtime tfvars
+6. `rancher-register-cluster.sh` - Post-apply import on control plane (SSH)
+7. `rancher-grant-cluster-access.sh` - Multi-team Rancher RBAC
+8. `rancher-fetch-kubeconfig.sh` - Publish KUBECONFIG environment secret
+9. `encrypt-state.sh` - Encrypt state files after operations (only after successful plan)
 
 **terraform-destroy.yml workflow uses these scripts**:
 1. `setup-gpg.sh` - Configure GPG for state decryption
@@ -281,8 +277,7 @@ graph TD
 ├── decrypt-state.sh
 ├── setup-gpg.sh
 ├── cleanup-state-locking.sh
-├── mint-rancher-runtime-tfvars.sh     # Rancher URL mint + runtime tfvars
-├── write-rancher-runtime-tfvars.sh
+├── write-rancher-runtime-tfvars.sh    # Rancher runtime tfvars (mint+write or write-only)
 ├── rancher-register-cluster.sh
 ├── rancher-fetch-kubeconfig.sh
 ├── rancher-grant-cluster-access.sh

@@ -328,11 +328,12 @@ jobs:
             exit 1
           fi
           CLUSTER_NAME="${RANCHER_CLUSTER_NAME_INPUT:-$REF_NAME}"
-          "$GITHUB_WORKSPACE/.github/scripts/mint-rancher-runtime-tfvars.sh" \
+          "$GITHUB_WORKSPACE/.github/scripts/write-rancher-runtime-tfvars.sh" \
             --rancher-url "$RANCHER_URL" \
             --token "$RANCHER_TOKEN" \
             --cluster-name "$CLUSTER_NAME" \
             --out "${RUNNER_TEMP}/rancher-runtime.tfvars" \
+            --enable true \
             --phase plan
 
       - name: Terraform Plan
@@ -352,11 +353,12 @@ jobs:
             exit 1
           fi
           CLUSTER_NAME="${RANCHER_CLUSTER_NAME_INPUT:-$REF_NAME}"
-          "$GITHUB_WORKSPACE/.github/scripts/mint-rancher-runtime-tfvars.sh" \
+          "$GITHUB_WORKSPACE/.github/scripts/write-rancher-runtime-tfvars.sh" \
             --rancher-url "$RANCHER_URL" \
             --token "$RANCHER_TOKEN" \
             --cluster-name "$CLUSTER_NAME" \
             --out "${RUNNER_TEMP}/rancher-runtime.tfvars" \
+            --enable true \
             --phase apply
 
       - name: Terraform Apply

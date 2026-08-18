@@ -113,7 +113,7 @@ Before running any Terraform workflow, understand these modes:
 
 When `ENABLE_RANCHER_IMPORT` is checked on **terraform plan / apply** (infra component only):
 
-1. **Plan** — `mint-rancher-runtime-tfvars.sh` mints a short-lived import URL and writes `$RUNNER_TEMP/rancher-runtime.tfvars` (not committed).
+1. **Plan** — `write-rancher-runtime-tfvars.sh` mints a short-lived import URL and writes `$RUNNER_TEMP/rancher-runtime.tfvars` (not committed).
 2. **Pre-apply refresh** — URL is minted again immediately before apply (tokens expire).
 3. **Apply** — Terraform/Ansible may use the runtime URL during cluster install.
 4. **Post-apply SSH import** — Fresh token applied on the control plane via `rancher-register-cluster.sh --apply-on-host`.
