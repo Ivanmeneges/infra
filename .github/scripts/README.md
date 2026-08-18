@@ -17,6 +17,12 @@ These scripts handle complex operations that would otherwise make workflow files
 | `setup-gpg.sh` | Configure GPG environment for encryption | terraform.yml, terraform-destroy.yml | Active |
 | `generate-pg-secrets.sh` | Generate PostgreSQL secrets (legacy) | N/A | Legacy |
 | `cleanup-state-locking.sh` | Clean up DynamoDB state locks | terraform-destroy.yml | Active |
+| `mint-rancher-runtime-tfvars.sh` | Mint Rancher import URL + write runtime tfvars | terraform.yml | Active |
+| `write-rancher-runtime-tfvars.sh` | Write `$RUNNER_TEMP/rancher-runtime.tfvars` overrides | terraform.yml, terraform-destroy.yml | Active |
+| `rancher-register-cluster.sh` | Register/import cluster via Rancher API | terraform.yml | Active |
+| `rancher-fetch-kubeconfig.sh` | Poll active + fetch kubeconfig from Rancher API | terraform.yml | Active |
+| `rancher-grant-cluster-access.sh` | Multi-team cluster RBAC (apply/grant-one/list/build-patch) | terraform.yml | Active |
+| `wg-env.sh` | WireGuard environment onboard/offboard | wg-onboard.yml | Active |
 | `test-*.sh` | Various testing and validation scripts | Manual testing | Active |
 | `validate-workflow-integration.sh` | Validate workflow integration | Manual testing | Active |
 | `setup-s3-backend.sh` | Empty placeholder | N/A | Placeholder |
@@ -86,6 +92,90 @@ These scripts handle complex operations that would otherwise make workflow files
 - Batch mode setup for automation
 - Trust database initialization
 
+## Rancher automation scripts
+
+Used when `ENABLE_RANCHER_IMPORT` is enabled on the **infra** terraform workflow. See also [`.github/config/README.md`](../config/README.md) for RBAC catalog and role template ids.
+
+### mint-rancher-runtime-tfvars.sh
+
+**Purpose**: Single entry point for plan-time and pre-apply Rancher import URL minting (calls `rancher-register-cluster.sh` + `write-rancher-runtime-tfvars.sh`).
+
+**Usage**:
+```bash
+./mint-rancher-runtime-tfvars.sh \
+  --rancher-url "$RANCHER_URL" \
+  --token "$TOKEN" \
+  --cluster-name "$ENV_NAME" \
+  --out "$RUNNER_TEMP/rancher-runtime.tfvars" \
+  --phase plan   # or apply
+```
+
+### write-rancher-runtime-tfvars.sh
+
+**Purpose**: Writes ephemeral `enable_rancher_import` / `rancher_import_url` overrides (never committed to git).
+
+**Usage**:
+```bash
+./write-rancher-runtime-tfvars.sh --out <path> --enable true --import-cmd '"kubectl apply -f https://..."'
+./write-rancher-runtime-tfvars.sh --out <path> --enable false   # destroy workflow
+```
+
+### rancher-register-cluster.sh
+
+**Purpose**: Create/find imported cluster in Rancher, mint registration token, print Terraform-compatible import command. Optional `--apply-on-host` for post-apply SSH kubectl apply.
+
+**Usage**:
+```bash
+./rancher-register-cluster.sh --rancher-url <url> --token <token> --cluster-name <name>
+./rancher-register-cluster.sh ... --apply-on-host --ssh-key <path> --ssh-host <ip>
+```
+
+**Environment**: `MAX_ATTEMPTS`, `SLEEP_SECONDS` (token poll); `MAX_AGENT_WAIT` (default 90), `AGENT_SLEEP` (default 10) for cattle-cluster-agent wait on `--apply-on-host`.
+
+### rancher-fetch-kubeconfig.sh
+
+**Purpose**: Wait for Rancher cluster `state=active`, then call `generateKubeconfig` API.
+
+**Usage**:
+```bash
+./rancher-fetch-kubeconfig.sh --rancher-url <url> --token <token> --cluster-name <name>
+```
+
+**Environment**: `MAX_ATTEMPTS` (default 90), `SLEEP_SECONDS` (default 10) ≈ 15 minute wait.
+
+### rancher-grant-cluster-access.sh
+
+**Purpose**: Apply cluster RBAC from `.github/config/rancher-access-grants.json` plus env/workflow patches.
+
+**Subcommands**:
+- `apply` — CI default after infra apply
+- `grant-one` — single group (debugging)
+- `list-bindings` — dump existing bindings
+- `build-patch` — print workflow merge patch JSON
+
+**Usage**:
+```bash
+./rancher-grant-cluster-access.sh apply \
+  --rancher-url <url> --token <token> --cluster-name <name> \
+  --grants-file .github/config/rancher-access-grants.json
+```
+
+**Environment**: `RANCHER_ACCESS_GRANTS`, `RANCHER_DEVOPS_*`, `WORKFLOW_*` (set by terraform.yml grant step).
+
+## WireGuard automation
+
+### wg-env.sh
+
+**Purpose**: Onboard/offboard GitHub environment WireGuard secrets (`TF_WG_CONFIG`, `CLUSTER_WIREGUARD_WG0`, `CLUSTER_WIREGUARD_WG1`) via jumpserver SSH + `assigned.txt` peer allocation.
+
+**Usage**:
+```bash
+./wg-env.sh onboard --env <branch> --host <jumpserver> --ssh-key <path> [--ticket DSD-xxx]
+./wg-env.sh offboard --env <branch> --host <jumpserver> --ssh-key <path> [--keep-environment]
+```
+
+**Tracker**: Updates `wg-peer-allocation.tsv` locally; `wg-onboard.yml` commits it after non-dry-run.
+
 ## Testing and Validation Scripts
 
 ### test-infrastructure.sh
@@ -145,13 +235,22 @@ Some scripts are empty placeholders for future functionality:
 2. `decrypt-state.sh` - Decrypt existing state files
 3. `configure-backend.sh` - Generate backend configuration
 4. `setup-cloud-storage.sh` - Create remote storage (if remote backend)
-5. `encrypt-state.sh` - Encrypt state files after operations
+5. `mint-rancher-runtime-tfvars.sh` - Mint Rancher import URL (when enabled)
+6. `write-rancher-runtime-tfvars.sh` - Runtime Rancher tfvars (also via mint helper)
+7. `rancher-register-cluster.sh` - Post-apply import on control plane (SSH)
+8. `rancher-grant-cluster-access.sh` - Multi-team Rancher RBAC
+9. `rancher-fetch-kubeconfig.sh` - Publish KUBECONFIG environment secret
+10. `encrypt-state.sh` - Encrypt state files after operations (only after successful plan)
 
 **terraform-destroy.yml workflow uses these scripts**:
 1. `setup-gpg.sh` - Configure GPG for state decryption
 2. `decrypt-state.sh` - Decrypt state files for destroy operation
 3. `configure-backend.sh` - Generate backend configuration
-4. `cleanup-state-locking.sh` - Clean up state locks after destroy
+4. `write-rancher-runtime-tfvars.sh` - Disable Rancher import for destroy
+5. `cleanup-state-locking.sh` - Clean up state locks after destroy
+
+**wg-onboard.yml workflow uses**:
+1. `wg-env.sh` - Peer allocation and GitHub environment secrets
 
 ### Script Dependencies
 
@@ -174,20 +273,28 @@ graph TD
 
 ```
 .github/scripts/
-├── README.md # This file - scripts documentation
-├── configure-backend.sh # Backend configuration generation
-├── setup-cloud-storage.sh # Remote storage setup
-├── encrypt-state.sh # GPG state encryption
-├── decrypt-state.sh # GPG state decryption
-├── setup-gpg.sh # GPG environment setup
-├── cleanup-state-locking.sh # State lock cleanup
-├── generate-pg-secrets.sh # Legacy PostgreSQL secrets
-├── test-infrastructure.sh # Comprehensive testing
-├── validate-workflow-integration.sh # Workflow validation
-├── test-*.sh # Various test scripts
-├── setup-s3-backend.sh # Empty placeholder
-└── setup-remote-storage.sh # Empty placeholder
+├── README.md                          # This file
+├── WORKFLOW_TESTING_GUIDE.md
+├── configure-backend.sh
+├── setup-cloud-storage.sh
+├── encrypt-state.sh
+├── decrypt-state.sh
+├── setup-gpg.sh
+├── cleanup-state-locking.sh
+├── mint-rancher-runtime-tfvars.sh     # Rancher URL mint + runtime tfvars
+├── write-rancher-runtime-tfvars.sh
+├── rancher-register-cluster.sh
+├── rancher-fetch-kubeconfig.sh
+├── rancher-grant-cluster-access.sh
+├── wg-env.sh
+├── wg-peer-allocation.tsv             # Repo tracker (header; rows added on onboard)
+├── generate-pg-secrets.sh             # Legacy
+├── test-infrastructure.sh
+├── validate-workflow-integration.sh
+└── test-*.sh
 ```
+
+**Configuration catalog**: `.github/config/rancher-access-grants.json` — see [`.github/config/README.md`](../config/README.md).
 
 ## Usage from Workflows
 

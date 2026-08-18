@@ -7,6 +7,8 @@ name: WireGuard environment onboard/offboard
 # keeps the GitHub environment object by default (set KEEP_ENVIRONMENT=false to delete it too).
 #
 # Requires .github/scripts/wg-env.sh.
+# Repo tracker: .github/scripts/wg-peer-allocation.tsv (seeded with header; updated on real runs).
+# Concurrent tracker commits on the same branch fail the rebase step — resolve manually and re-run.
 
 on:
   workflow_dispatch:

@@ -8,43 +8,43 @@
   },
   {
     "group": "QA",
-    "role": "rt-jdzrj",
+    "role": "cluster-member",
     "enabled": false,
     "principal_id": "keycloak_group://QA"
   },
   {
     "group": "DEV",
-    "role": "rt-jdzrj",
+    "role": "cluster-member",
     "enabled": false,
     "principal_id": "keycloak_group://DEV"
   },
   {
     "group": "PM",
-    "role": "rt-rgcq7",
+    "role": "read-only",
     "enabled": false,
     "principal_id": "keycloak_group://PM"
   },
   {
     "group": "PO",
-    "role": "rt-rgcq7",
+    "role": "read-only",
     "enabled": false,
     "principal_id": "keycloak_group://PO"
   },
   {
     "group": "BA",
-    "role": "rt-rgcq7",
+    "role": "read-only",
     "enabled": false,
     "principal_id": "keycloak_group://BA"
   },
   {
     "group": "TL+ARCHITECT",
-    "role": "rt-rgcq7",
+    "role": "read-only",
     "enabled": false,
     "principal_id": "keycloak_group://TL+ARCHITECT"
   },
   {
     "group": "AUTOMATION",
-    "role": "rt-89ntg",
+    "role": "cluster-member",
     "enabled": false,
     "principal_id": "keycloak_group://AUTOMATION"
   }

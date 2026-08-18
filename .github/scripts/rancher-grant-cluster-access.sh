@@ -566,13 +566,19 @@ run_single_grant() {
     || { err "Refusing to bind a non-group principal: ${GROUP_PRINCIPAL_ID}"; return 1; }
 
   if [[ "$FIX_MISBOUND_USER" == "true" && -n "$GROUP_NAME" ]]; then
-    remove_misbound_user_bindings || true
-    reconcile_stale_group_bindings "$GROUP_PRINCIPAL_ID" || true
-    remove_stale_role_bindings "$GROUP_PRINCIPAL_ID" || true
+    remove_misbound_user_bindings \
+      || { err "Failed while removing misbound user bindings for group '$GROUP_NAME'"; return 1; }
+    reconcile_stale_group_bindings "$GROUP_PRINCIPAL_ID" \
+      || { err "Failed while reconciling stale group bindings for group '$GROUP_NAME'"; return 1; }
+    remove_stale_role_bindings "$GROUP_PRINCIPAL_ID" \
+      || { err "Failed while removing stale role bindings for group '$GROUP_NAME'"; return 1; }
     if [[ "$DELETIONS_PERFORMED" == "true" ]]; then
       wait_for_deleted_bindings
     fi
   fi
+
+  validate_role_template_exists "$ROLE_TEMPLATE_ID" "${GROUP_NAME:-$GROUP_PRINCIPAL_ID}" \
+    || return 1
 
   log "Granting role '${ROLE_TEMPLATE_ID}' to group '${GROUP_NAME:-$GROUP_PRINCIPAL_ID}' on cluster '${CLUSTER_ID}' ..."
 
@@ -670,7 +676,7 @@ build_workflow_patch() {
 
 JQ_MERGE='
   def enabled_grant:
-    if has("enabled") then .enabled == true else true end;
+    if has("enabled") then .enabled == true else false end;
   def to_map:
     map(select((.group // "") != "")) | map({(.group): .}) | add // {};
   def from_maps($bm; $om):
@@ -685,7 +691,27 @@ validate_role() {
   if [[ "$role" =~ ^(cluster-[A-Za-z0-9-]+|rt-[A-Za-z0-9-]+)$ ]]; then
     return 0
   fi
-  die "Invalid role '$role' for group '$group' (expected cluster-* or rt-* template id)"
+  die "Invalid role '$role' for group '$group' (expected cluster-* or rt-* template id; see .github/config/README.md)"
+}
+
+role_template_exists() {
+  local role="$1" json
+  if ! json="$(api GET "/v3/roletemplates/$(urlencode "$role")")"; then
+    return 1
+  fi
+  jq -e --arg id "$role" '(.id // "") == $id' <<<"$json" >/dev/null 2>&1
+}
+
+validate_role_template_exists() {
+  local role="$1" group="$2"
+  if role_template_exists "$role"; then
+    return 0
+  fi
+  err "Role template '$role' for group '$group' was not found in Rancher."
+  err "Use Rancher UI → Users & Authentication → Roles → Cluster, or:"
+  err "  curl -sS -H \"Authorization: Bearer \$TOKEN\" \"\${RANCHER_URL}/v3/roletemplates\" | jq '.data[] | {id, name}'"
+  err "Override per environment via GitHub variable RANCHER_ACCESS_GRANTS (see .github/config/README.md)."
+  return 1
 }
 
 validate_group() {
@@ -817,6 +843,7 @@ cmd_apply_batch() {
   fi
 
   grants="$(resolve_grants_json)"
+  grants="$(printf '%s' "$grants" | jq -c '[.[] | select(.enabled == true)]')"
   count="$(printf '%s' "$grants" | jq 'length')"
   if [[ "$count" -eq 0 ]]; then
     log "No enabled grants to apply (all groups disabled or empty config)"
@@ -824,7 +851,7 @@ cmd_apply_batch() {
   fi
 
   log "Effective grant plan ($count enabled):"
-  printf '%s' "$grants" | jq -r '.[] | "  - \(.group): \(.role) (enabled=\(.enabled // true))"'
+  printf '%s' "$grants" | jq -r '.[] | "  - \(.group): \(.role) (enabled=true)"'
 
   while IFS= read -r grant; do
     index=$((index + 1))

@@ -108,3 +108,33 @@ Before running any Terraform workflow, understand these modes:
 ### Backend Configuration Errors
 **Error**: "Backend configuration changed"
 **Solution**: Run terraform init to reinitialize backend configuration
+
+## Rancher integration (infra workflow)
+
+When `ENABLE_RANCHER_IMPORT` is checked on **terraform plan / apply** (infra component only):
+
+1. **Plan** — `mint-rancher-runtime-tfvars.sh` mints a short-lived import URL and writes `$RUNNER_TEMP/rancher-runtime.tfvars` (not committed).
+2. **Pre-apply refresh** — URL is minted again immediately before apply (tokens expire).
+3. **Apply** — Terraform/Ansible may use the runtime URL during cluster install.
+4. **Post-apply SSH import** — Fresh token applied on the control plane via `rancher-register-cluster.sh --apply-on-host`.
+5. **RBAC** — `rancher-grant-cluster-access.sh apply` using [`.github/config/rancher-access-grants.json`](../.github/config/rancher-access-grants.json).
+6. **KUBECONFIG** — `rancher-fetch-kubeconfig.sh` waits up to ~15 minutes for `state=active`, then publishes the environment secret.
+
+**Required GitHub environment secrets**: `RANCHER_API_URL`, `RANCHER_API_TOKEN`
+
+**Optional workflow inputs**:
+- `GRANT_GROUP_ACCESS` — enable non-DEVOPS teams from the catalog
+- `RANCHER_CLUSTER_OWNER_GROUP_*` — grant another group `cluster-owner`
+- `PUBLISH_KUBECONFIG` — fetch and store kubeconfig (default: true)
+
+**Destroy**: `terraform-destroy.yml` writes runtime tfvars with `enable_rancher_import=false` so stale profile placeholders do not block teardown.
+
+**Failure behavior**: Plan, apply, destroy, and kubeconfig publish steps fail the workflow on error (no `continue-on-error`). State is committed only after a **successful plan**.
+
+**Role templates**: Use built-in ids (`cluster-owner`, `cluster-member`, `read-only`) in the catalog; override per environment with `RANCHER_ACCESS_GRANTS` — see [`.github/config/README.md`](../.github/config/README.md).
+
+## WireGuard onboarding
+
+Use **WireGuard environment onboard/offboard** workflow (`wg-onboard.yml`) before the first terraform run on a new branch/environment. Default `DRY_RUN=true` — uncheck for real allocation.
+
+See [`.github/scripts/README.md`](../.github/scripts/README.md#wireguard-automation) and `wg-env.sh --help`.
