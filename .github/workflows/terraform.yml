@@ -595,7 +595,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_INFRA_PAT }}
           REF_NAME: ${{ github.ref_name }}
-        if: steps.plan.outcome == 'success'
+        if: always() && steps.apply.outcome == 'success'
 
       - name: Terraform plan / apply status
         if: ${{ steps.plan.outcome == 'failure' || steps.apply.outcome == 'failure' || steps.publish-kubeconfig.outcome == 'failure' }}
