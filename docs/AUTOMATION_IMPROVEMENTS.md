@@ -96,7 +96,7 @@ Grants use **four merge layers** (later layers override earlier for the same `gr
 | 3 | `vars.RANCHER_DEVOPS_ROLE` / `RANCHER_DEVOPS_ENABLED` | Quick DEVOPS-only override per env |
 | 4 | **Terraform workflow UI** | Per-run team selection — highest priority |
 
-When `ENABLE_RANCHER_IMPORT=true`, the workflow automatically runs `.github/scripts/rancher-grant-cluster-access-batch.sh` (DEVOPS cluster-owner from JSON by default). No separate grant checkbox.
+When `ENABLE_RANCHER_IMPORT=true`, the workflow automatically runs `.github/scripts/rancher-grant-cluster-access.sh --grants-file` (DEVOPS cluster-owner from JSON by default). No separate grant checkbox.
 
 ### Workflow UI (when you run Terraform)
 

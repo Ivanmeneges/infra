@@ -348,7 +348,7 @@ Optional environment variable:
 | Step | Script | Replaces manual step |
 |------|--------|----------------------|
 | Mint Rancher import URL | `.github/scripts/rancher-register-cluster.sh` | Copy import YAML from Rancher UI |
-| Grant multi-team Rancher access | `.github/scripts/rancher-grant-cluster-access-batch.sh` | Manual Rancher role binding per group |
+| Grant multi-team Rancher access | `.github/scripts/rancher-grant-cluster-access.sh` | Manual Rancher role binding per group |
 | Publish `KUBECONFIG` | `.github/scripts/rancher-fetch-kubeconfig.sh` | Copy kubeconfig to GitHub secret |
 | Apply QA RBAC in cluster | `qa-dev-rbac.yaml.tpl` | Giving everyone cluster-admin |
 
