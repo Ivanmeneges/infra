@@ -54,7 +54,8 @@ Single-grant mode (one of --group / --group-principal-id):
   --fix-misbound-user           Remove wrong bindings before grant
 
 Batch/catalog mode (apply all enabled grants from JSON):
-  --grants-file <path>          Catalog file (default: .github/config/rancher-access-grants.json)
+  --apply-catalog               Apply grants from rancher-access-grants.json (auto-resolve path)
+  --grants-file <path>          Catalog file (optional if --apply-catalog)
   --grants-json <json>          Full grant array (replaces file + env patches)
   --grants-mode <merge|replace> How to apply RANCHER_ACCESS_GRANTS env patch (default: merge)
   --default-group-auth-prefix   Prefix for groups without principal_id in catalog
@@ -78,7 +79,7 @@ Examples:
 
   # Full catalog (CI default)
   rancher-grant-cluster-access.sh --rancher-url "$URL" --token "$TOKEN" \
-    --cluster-name dev1 --grants-file .github/config/rancher-access-grants.json
+    --cluster-name dev1 --apply-catalog
 EOF
 }
 
@@ -124,6 +125,7 @@ while [[ $# -gt 0 ]]; do
     --binding-name)                require_arg --binding-name "${2-}";                BINDING_NAME="$2"; shift 2 ;;
     --grants-file)                 require_arg --grants-file "${2-}";                 GRANTS_FILE="$2"; BATCH_MODE="true"; shift 2 ;;
     --grants-json)                 require_arg --grants-json "${2-}";               GRANTS_JSON="$2"; BATCH_MODE="true"; shift 2 ;;
+    --apply-catalog)               BATCH_MODE="true"; shift ;;
     --grants-mode)                 require_arg --grants-mode "${2-}";               GRANTS_MODE="$2"; shift 2 ;;
     --default-group-auth-prefix)   require_arg --default-group-auth-prefix "${2-}";   DEFAULT_GROUP_AUTH_PREFIX="$2"; shift 2 ;;
     --list-bindings)               LIST_BINDINGS="true"; shift ;;
@@ -142,7 +144,7 @@ command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v jq   >/dev/null 2>&1 || die "jq is required"
 
 if [[ "$BATCH_MODE" != "true" && "$LIST_BINDINGS" != "true" ]]; then
-  [[ -n "$GROUP_NAME" || -n "$GROUP_PRINCIPAL_ID" ]] || die "--group, --group-principal-id, or --grants-file is required"
+  [[ -n "$GROUP_NAME" || -n "$GROUP_PRINCIPAL_ID" ]] || die "--group, --group-principal-id, --grants-file, or --apply-catalog is required"
 fi
 
 case "$GRANTS_MODE" in
@@ -571,7 +573,72 @@ retry_alternate_principals() {
 
 # ── Batch / catalog helpers ───────────────────────────────────────────────────
 
-batch_log() { echo "[rancher-grant-batch] $*" >&2; }
+batch_log() { log "$*"; }
+
+write_builtin_grants_catalog() {
+  local dest="$1"
+  mkdir -p "$(dirname "$dest")"
+  cat >"$dest" <<'EOF'
+[
+  {
+    "group": "DEVOPS",
+    "role": "cluster-owner",
+    "enabled": true,
+    "principal_id": "keycloak_group://DEVOPS",
+    "fix_misbound_user": true
+  },
+  {
+    "group": "QA",
+    "role": "cluster-member",
+    "enabled": false,
+    "principal_id": "keycloak_group://QA"
+  },
+  {
+    "group": "DEVELOPERS",
+    "role": "cluster-member",
+    "enabled": false,
+    "principal_id": "keycloak_group://DEVELOPERS"
+  }
+]
+EOF
+  batch_log "Wrote built-in default catalog to $dest"
+  printf '%s' "$dest"
+}
+
+# Locate rancher-access-grants.json (repo config, bundled default, or temp fallback).
+resolve_grants_catalog_path() {
+  local root ref dest path
+  root="${GITHUB_WORKSPACE:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+  ref="${REF_NAME:-unknown}"
+  local candidates=(
+    "${WORKFLOW_GRANTS_CATALOG:-}"
+    "$GRANTS_FILE"
+    "$root/.github/config/rancher-access-grants.json"
+    "${SCRIPT_DIR}/rancher-access-grants.default.json"
+  )
+
+  batch_log "Resolving grants catalog (branch/ref=$ref, workspace=$root)"
+  for path in "${candidates[@]}"; do
+    [[ -n "$path" ]] || continue
+    if [[ -f "$path" ]]; then
+      batch_log "Using catalog: $path"
+      printf '%s' "$path"
+      return 0
+    fi
+    batch_log "Not found: $path"
+  done
+
+  dest="${RUNNER_TEMP:-/tmp}/rancher-access-grants.${ref}.json"
+  batch_log "No catalog file on branch '$ref' — materializing embedded default"
+  write_builtin_grants_catalog "$dest"
+}
+
+ensure_grants_catalog_file() {
+  if [[ -f "$GRANTS_FILE" ]]; then
+    return 0
+  fi
+  GRANTS_FILE="$(resolve_grants_catalog_path)"
+}
 
 validate_catalog_role() {
   local role="$1" group="$2"
@@ -647,7 +714,6 @@ bool_env_enabled() {
 
 build_workflow_rancher_patch() {
   local catalog="${WORKFLOW_GRANTS_CATALOG:-$GRANTS_FILE}"
-  local default_catalog="${SCRIPT_DIR}/rancher-access-grants.default.json"
   local devops_group="${WORKFLOW_DEVOPS_GROUP:-DEVOPS}"
   local grant_enabled owner_enabled owner_group patch
 
@@ -658,15 +724,7 @@ build_workflow_rancher_patch() {
   fi
 
   if [[ ! -f "$catalog" ]]; then
-    if [[ -x "${SCRIPT_DIR}/resolve-rancher-grants-catalog.sh" ]]; then
-      catalog="$("${SCRIPT_DIR}/resolve-rancher-grants-catalog.sh")"
-    elif [[ -f "$default_catalog" ]]; then
-      catalog="$default_catalog"
-    else
-      batch_log "No grants catalog for workflow patch — skipping"
-      printf '%s' '[]'
-      return 0
-    fi
+    catalog="$(resolve_grants_catalog_path)"
   fi
 
   jq empty "$catalog" || die "Invalid JSON catalog: $catalog"
@@ -704,17 +762,19 @@ build_workflow_rancher_patch() {
 
 load_base_grants() {
   local default_file="${SCRIPT_DIR}/rancher-access-grants.default.json"
-  local base
-  if [[ -f "$GRANTS_FILE" ]]; then
-    base="$(cat "$GRANTS_FILE")"
+  local base catalog_path="$GRANTS_FILE"
+  ensure_grants_catalog_file
+  catalog_path="$GRANTS_FILE"
+  if [[ -f "$catalog_path" ]]; then
+    base="$(cat "$catalog_path")"
   elif [[ -f "$default_file" ]]; then
-    batch_log "Grants catalog not found at $GRANTS_FILE — using built-in default ($default_file)"
+    batch_log "Grants catalog not found at $GRANTS_FILE — using bundled default ($default_file)"
     base="$(cat "$default_file")"
   else
     batch_log "No grants catalog; using minimal DEVOPS cluster-owner default"
     base='[{"group":"DEVOPS","role":"cluster-owner","enabled":true,"principal_id":"keycloak_group://DEVOPS","fix_misbound_user":true}]'
   fi
-  validate_grants_array "base grants file ($GRANTS_FILE)" "$base"
+  validate_grants_array "base grants file ($catalog_path)" "$base"
   printf '%s' "$base"
 }
 
@@ -848,6 +908,8 @@ run_single_grant() {
 
 run_batch_grants() {
   local grants count failures=0 index=0
+  ensure_grants_catalog_file
+  batch_log "Catalog path: $GRANTS_FILE"
   grants="$(resolve_grants_json)"
   count="$(printf '%s' "$grants" | jq 'length')"
   if [[ "$count" -eq 0 ]]; then
