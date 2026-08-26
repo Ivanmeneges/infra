@@ -405,7 +405,7 @@ remove_misbound_user_bindings() {
       select((.userPrincipalId // "") != "") |
       select((.groupPrincipalId // "") == "") |
       select(
-        (.userPrincipalId // "") | endswith("/" + $name) or endswith("://" + $name) or endswith($name)
+        (.userPrincipalId // "") | endswith("/" + $name) or endswith("://" + $name)
       ) |
       [.id, .userPrincipalId] |
       @tsv
@@ -810,16 +810,15 @@ resolve_grants_json() {
     return 0
   fi
 
-  if [[ "$GRANTS_MODE" == "replace" && -n "${RANCHER_ACCESS_GRANTS:-}" ]]; then
-    validate_grants_array "RANCHER_ACCESS_GRANTS" "$RANCHER_ACCESS_GRANTS"
-    batch_log "Using RANCHER_ACCESS_GRANTS (replace mode)"
-    printf '%s' "$RANCHER_ACCESS_GRANTS"
-    return 0
-  fi
-
   local base env_patch devops_patch merged workflow_patch
   base="$(load_base_grants)"
-  env_patch="${RANCHER_ACCESS_GRANTS:-[]}"
+  if [[ "$GRANTS_MODE" == "replace" && -n "${RANCHER_ACCESS_GRANTS:-}" ]]; then
+    validate_grants_array "RANCHER_ACCESS_GRANTS" "$RANCHER_ACCESS_GRANTS"
+    env_patch="${RANCHER_ACCESS_GRANTS}"
+    batch_log "RANCHER_ACCESS_GRANTS replace mode: env patch overrides base per group; catalog + DEVOPS + workflow patches still apply"
+  else
+    env_patch="${RANCHER_ACCESS_GRANTS:-[]}"
+  fi
   devops_patch="$(build_devops_patch)"
   workflow_patch="$(build_workflow_rancher_patch)"
 
@@ -836,7 +835,11 @@ resolve_grants_json() {
     batch_log "Applied workflow_dispatch patch (Actions UI selections)"
   fi
   if [[ -n "${RANCHER_ACCESS_GRANTS:-}" ]]; then
-    batch_log "Merged RANCHER_ACCESS_GRANTS patch onto base file"
+    if [[ "$GRANTS_MODE" == "replace" ]]; then
+      batch_log "Applied RANCHER_ACCESS_GRANTS env patch (replace mode) onto base catalog"
+    else
+      batch_log "Merged RANCHER_ACCESS_GRANTS patch onto base file"
+    fi
   else
     batch_log "Using base grants from $GRANTS_FILE"
   fi
