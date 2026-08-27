@@ -1,12 +1,13 @@
 # Automation Improvements Guide
 
-This document describes three guardrail improvements for MOSIP self-service deployment:
+This document describes guardrail improvements for MOSIP self-service deployment:
 
 1. **DevOps approval gates** for GitHub Actions  
 2. **Multi-team Rancher access** via JSON config (no extra workflow inputs)  
 3. **WireGuard offboarding** with real cryptographic revocation and peer reuse  
+4. **Rancher grant reliability** — cache fix, resilient KUBECONFIG publish  
 
----
+> **Reference branch:** [`testiv`](https://github.com/mosip/infra/tree/testiv) on `mosip/infra` uses the expanded 8-team Rancher catalog (see [Section 2](#2-multi-team-rancher-access-json-array)).
 
 ## 1. DevOps approval gates
 
@@ -96,7 +97,7 @@ Grants use **four merge layers** (later layers override earlier for the same `gr
 | 3 | `vars.RANCHER_DEVOPS_ROLE` / `RANCHER_DEVOPS_ENABLED` | Quick DEVOPS-only override per env |
 | 4 | **Terraform workflow UI** | Per-run team selection — highest priority |
 
-When `ENABLE_RANCHER_IMPORT=true`, the workflow automatically runs `.github/scripts/rancher-grant-cluster-access.sh --grants-file` (DEVOPS cluster-owner from JSON by default). No separate grant checkbox.
+When `ENABLE_RANCHER_IMPORT=true`, the workflow automatically runs `.github/scripts/rancher-grant-cluster-access.sh --apply-catalog` (DEVOPS cluster-owner from JSON by default). No separate grant checkbox.
 
 ### Workflow UI (when you run Terraform)
 
@@ -161,6 +162,48 @@ or shortcut variable `RANCHER_DEVOPS_ROLE` = `cluster-member`.
 **Disable DEVOPS grant for one env** — variable `RANCHER_DEVOPS_ENABLED` = `false`.
 
 See `.github/config/README.md` for full workflow input reference.
+
+### testiv branch catalog (8 teams)
+
+On `mosip/infra` branch **`testiv`**, `.github/config/rancher-access-grants.json` includes MOSIP org teams with **custom Rancher role template IDs** (not just `cluster-member`):
+
+| Group | Role on testiv |
+|-------|----------------|
+| DEVOPS | `cluster-owner` (always granted) |
+| QA, DEV | `rt-jdzrj` |
+| PM, PO, BA, TL+ARCHITECT | `rt-rgcq7` |
+| AUTOMATION | `rt-89ntg` |
+
+Enable all teams on one run: check **`GRANT_GROUP_ACCESS=true`** in the Terraform workflow. For a first deploy or when Rancher API is slow, leave it unchecked (DEVOPS only).
+
+---
+
+## 4. Rancher grant reliability and KUBECONFIG publish
+
+### Problem (observed on testiv)
+
+When `GRANT_GROUP_ACCESS=true`, the grant script applied RBAC for each team sequentially. An older bug used `json="$(fetch_cluster_bindings)"`, which ran the fetch in a subshell and **discarded the in-memory cache** — causing one 60-second Rancher API list call **per team** (8 teams ≈ 8 minutes of API load). Timeouts at team 7/8 left **`KUBECONFIG` unpublished** because the publish step ran only after a successful grant.
+
+### Solution (in `rancher-grant-cluster-access.sh` + `terraform.yml`)
+
+| Fix | Behaviour |
+|-----|-----------|
+| Binding cache in parent shell | One list call prefetched at batch start |
+| Retry list API | Up to 5 attempts on transient failures |
+| HTTP 409 on create | Treated as success if binding already exists |
+| Grant step `continue-on-error: true` | Partial RBAC failure does not fail the workflow |
+| Publish step `if: always()` | When Terraform apply succeeded, **KUBECONFIG is published even if grant timed out** |
+
+### Operational guidance (testiv)
+
+| Situation | Recommended inputs |
+|-----------|-------------------|
+| First infra deploy | `GRANT_GROUP_ACCESS=false`, `PUBLISH_KUBECONFIG=true` |
+| Add team RBAC after cluster is stable | Re-run apply (no-op) with `GRANT_GROUP_ACCESS=true` |
+| Grant timed out but cluster imported | Re-run with `GRANT_GROUP_ACCESS=false` — publish step backfills `KUBECONFIG` |
+| Rancher not deployed | `ENABLE_RANCHER_IMPORT=false`, set `KUBECONFIG` manually from control plane |
+
+Ensure `GH_INFRA_PAT` has **Secrets: Read and write** — see [SECRET_GENERATION_GUIDE.md](SECRET_GENERATION_GUIDE.md#4-github-personal-access-token-gh_infra_pat).
 
 ---
 
@@ -243,5 +286,6 @@ wg-env.sh onboard (env B)  →  may reuse peer4/5/6 with NEW keys for env B
 | Add Rancher teams/roles | Edit `.github/config/rancher-access-grants.json` or `vars.RANCHER_ACCESS_GRANTS` |
 | Revoke VPN access permanently | `WireGuard offboard environment` |
 | Reallocate peer to new env | Offboard old env → onboard new env |
+| Rancher grant timeout / KUBECONFIG missing | Re-run terraform with `GRANT_GROUP_ACCESS=false`; see [agents.md](agents.md) |
 
-See also: [SELF_SERVICE_DEPLOYMENT_GUIDE.md](SELF_SERVICE_DEPLOYMENT_GUIDE.md)
+See also: [SELF_SERVICE_DEPLOYMENT_GUIDE.md](SELF_SERVICE_DEPLOYMENT_GUIDE.md), [agents.md](agents.md)

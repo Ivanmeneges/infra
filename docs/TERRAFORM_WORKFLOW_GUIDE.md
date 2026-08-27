@@ -57,6 +57,46 @@ If Terraform Apply = ☐ (unchecked - dry run)
 → Rancher Import setting is ignored
 ```
 
+## Rancher and KUBECONFIG Parameters (infra component)
+
+These inputs apply when `TERRAFORM_COMPONENT=infra`:
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ENABLE_RANCHER_IMPORT` | false | Mint import URL, apply on cluster, grant RBAC |
+| `RANCHER_CLUSTER_NAME` | branch name | Rancher cluster display name (e.g. `testiv`) |
+| `PUBLISH_KUBECONFIG` | true | Fetch kubeconfig from Rancher → `gh secret set KUBECONFIG --env $REF_NAME` |
+| `GRANT_GROUP_ACCESS` | false | Grant all teams from `rancher-access-grants.json` (DEVOPS always granted) |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | false | Grant extra cluster-owner to named group |
+| `RANCHER_CLUSTER_OWNER_GROUP` | (empty) | e.g. `QA` |
+
+**Required environment secrets:** `RANCHER_API_URL`, `RANCHER_API_TOKEN`  
+**Required repo secret:** `GH_INFRA_PAT` with **Secrets: Read and write**
+
+### Post-apply sequence
+
+```
+Terraform apply (RKE2)
+  → rancher-register-cluster.sh --apply-on-host
+  → rancher-grant-cluster-access.sh --apply-catalog  (continue-on-error)
+  → rancher-fetch-kubeconfig.sh → publish KUBECONFIG   (if: always when apply OK)
+```
+
+### testiv reference
+
+On branch **`testiv`**, the Rancher catalog has 8 teams (DEVOPS, QA, DEV, PM, PO, BA, TL+ARCHITECT, AUTOMATION) with custom role IDs. See [agents.md](agents.md) and [AUTOMATION_IMPROVEMENTS.md](AUTOMATION_IMPROVEMENTS.md).
+
+**First deploy tip:** leave `GRANT_GROUP_ACCESS` unchecked; enable multi-team grants on a later no-op re-run once the cluster is stable.
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Grant step timeout at N/8 | Re-run with `GRANT_GROUP_ACCESS=false`; ensure grant cache fix is on branch |
+| KUBECONFIG not published | Check `GH_INFRA_PAT` Secrets scope; re-run with `PUBLISH_KUBECONFIG=true` |
+| Apply stuck on `download_kubeconfig_files` | Cancel; re-run apply (kubeconfig fetch targets all nodes — known long-running step) |
+| Rancher unavailable | Set `ENABLE_RANCHER_IMPORT=false`; copy kubeconfig from control plane manually |
+
 ## Backend Configuration Options
 
 - **`local`**: GPG-encrypted local state storage (recommended for development and small teams)

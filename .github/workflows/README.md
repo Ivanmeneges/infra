@@ -22,6 +22,36 @@ This directory contains GitHub Actions workflows for automated MOSIP deployment:
 | `helmsman_testrigs.yml` | Deploy Test Rigs | Manual Dispatch | Uses deployed infra | Testing components |
 | `validate-infra-secrets.yml` | Validate `GH_INFRA_PAT` + expiry warnings | Weekly cron / Manual | N/A | N/A |
 | `k8s_health_check.yml` | Cluster health + disk alerts | Every 6h / Manual | N/A | N/A |
+| `wg-onboard.yml` | WireGuard peer allocation + env secrets | Manual (self-hosted) | N/A | N/A |
+| `wg-offboard.yml` | WireGuard revoke + peer reuse | Manual (self-hosted) | N/A | N/A |
+| `setup-environment-protection.yml` | DevOps approval gates per environment | Manual | N/A | N/A |
+| `terraform-destroy.yml` | Destroy Infrastructure | Manual Dispatch | GPG encrypted state | Handles PostgreSQL cleanup |
+| `helmsman_signup.yml` | Deploy Signup stack | Manual / Push | Uses deployed infra | Requires esignet-dsf |
+| `helmsman_*_destroy*.yml` | Undeploy Helmsman layers | Manual | Uses KUBECONFIG | See HELMSMAN_DESTROY_GUIDE.md |
+| `keycloak-rancher-integration.yml` | Keycloak-Rancher SAML | Manual | N/A | One-time SSO setup |
+
+> **Full agent reference:** [docs/agents.md](../docs/agents.md) — all 18 workflows with testiv examples.
+
+## Reference environment: testiv
+
+Branch **`testiv`** on `mosip/infra` is the active self-service test environment:
+
+- GitHub Environment name = `testiv`
+- Rancher cluster name defaults to `testiv`
+- Expanded RBAC catalog (8 teams) in `.github/config/rancher-access-grants.json`
+- Domain configured in `terraform/implementations/aws/infra/profiles/mosip/aws.tfvars` (`cluster_env_domain`)
+
+## Rancher post-apply steps (`terraform.yml`)
+
+When `ENABLE_RANCHER_IMPORT=true` on `infra` component:
+
+1. **Mint import URL** — `rancher-register-cluster.sh` + `write-rancher-runtime-tfvars.sh` (runtime only)
+2. **Terraform apply** — RKE2 cluster + Ansible
+3. **Apply import on host** — SSH to control plane; waits for `cattle-cluster-agent`
+4. **Grant access** — `rancher-grant-cluster-access.sh --apply-catalog` (`continue-on-error: true`)
+5. **Publish KUBECONFIG** — `rancher-fetch-kubeconfig.sh` → `gh secret set KUBECONFIG --env $REF_NAME` (`if: always()` when apply succeeded)
+
+Requires `GH_INFRA_PAT` with **Secrets: Read and write**.
 
 ## Cloud Provider Support
 

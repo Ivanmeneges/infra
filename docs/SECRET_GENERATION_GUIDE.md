@@ -285,10 +285,14 @@ A Fine-grained Personal Access Token (PAT) that allows GitHub Actions workflows 
 
 ### Why do you need it?
 
-`GH_INFRA_PAT` is used in two places inside `helmsman_esignet.yml`:
+`GH_INFRA_PAT` is used across Terraform and Helmsman workflows:
 
-1. **Auto-trigger `helmsman_signup.yml`** — after a successful eSignet standalone deployment (`profile=esignet-standalone`), the `workflow-caller` job calls the GitHub Actions API to dispatch the signup workflow automatically. This requires `Actions: Read and write` on the PAT. Without it, the signup workflow will never be triggered even if eSignet deploys successfully.
-2. **Repository operations during deploy** — used as `GH_TOKEN` override for authenticated GitHub API calls within the deploy job.
+1. **Checkout and state commit** — authenticated git operations during `terraform.yml` / `terraform-destroy.yml`.
+2. **Publish `KUBECONFIG`** — after infra apply, `terraform.yml` runs `gh secret set KUBECONFIG --env "$REF_NAME"`. Requires **Secrets: Read and write**.
+3. **Workflow dispatch** — eSignet may auto-trigger signup (when enabled); requires **Actions: Read and write**.
+4. **Helmsman deploy jobs** — used as `GH_TOKEN` for GitHub API calls during application deployment.
+
+> **Reference environment:** On branch `testiv`, a successful infra apply publishes `KUBECONFIG` to GitHub Environment **`testiv`**. If publish fails with a 403 on secrets, the PAT is missing **Secrets: Read and write**.
 
 ### How to Generate GH_INFRA_PAT
 
@@ -312,11 +316,12 @@ A Fine-grained Personal Access Token (PAT) that allows GitHub Actions workflows 
    |---|---|---|
    | **Contents** | Read and write | Push/pull operations — Read-only causes 403 on push |
    | **Metadata** | Read-only | Required by GitHub (auto-selected) |
-   | **Actions** | Read and write | **Critical** — dispatches `helmsman_signup.yml` via GitHub API after eSignet deploy |
+   | **Actions** | Read and write | Dispatches child workflows via GitHub API |
    | **Environments** | Read and write | Read/write environment configuration |
    | **Variables** | Read and write | Read/write environment variables |
+   | **Secrets** | Read and write | **Required** — `gh secret set KUBECONFIG` during Terraform publish; WireGuard onboard uses `ACTION_PAT` with same scope |
 
-   > **No Secrets permission needed** — intentionally excluded to follow least-privilege principle.
+   > **`ACTION_PAT`** (WireGuard onboard/offboard) also needs **Secrets: Read and write** to create `TF_WG_CONFIG`, `CLUSTER_WIREGUARD_WG0`, and `CLUSTER_WIREGUARD_WG1` on the target environment.
 
 4. **Generate and Save**
    - Click **Generate token**
@@ -329,9 +334,9 @@ Add as **Repository Secret** in GitHub:
 - **Value**: `github_pat_...` (your generated token)
 
 ### Common Pitfalls
-- ❌ **`Actions: Read-only`** — workflow dispatch requires write; signup auto-trigger will silently fail even though eSignet deployed successfully
+- ❌ **`Actions: Read-only`** — workflow dispatch requires write
 - ❌ **`Contents: Read-only`** — causes 403 error on push operations during deploy
-- ❌ Adding **Secrets** permission — not needed, violates least-privilege
+- ❌ **Missing Secrets permission** — `KUBECONFIG` publish fails; Helmsman cannot read env secrets set by WireGuard onboard
 - ❌ Selecting **All repositories** instead of only the infra repository
 - ❌ Not saving the token immediately after generation — shown only once
 
@@ -490,41 +495,41 @@ KUBECONFIG is a configuration file that contains credentials and connection deta
 
 ### How to Get KUBECONFIG
 
-KUBECONFIG is **automatically generated** by Terraform after deploying infrastructure.
+KUBECONFIG is **automatically published** when you run **`terraform plan / apply`** with:
+
+- `TERRAFORM_COMPONENT=infra`
+- `TERRAFORM_APPLY=true`
+- `ENABLE_RANCHER_IMPORT=true`
+- `PUBLISH_KUBECONFIG=true` (default)
+
+The workflow fetches kubeconfig from Rancher via `.github/scripts/rancher-fetch-kubeconfig.sh` and runs:
+
+```bash
+gh secret set KUBECONFIG --env "$REF_NAME"   # e.g. testiv
+```
+
+**Branch = environment:** On branch `testiv`, the secret is stored under GitHub Environment **`testiv`**.
 
 #### Step 1: Deploy Infrastructure First
-```bash
-# Complete Terraform infra deployment
-# Wait for workflow to complete successfully
+
+Run terraform apply on your environment branch and wait for the **Publish KUBECONFIG from Rancher** step (runs even if Rancher grant step had a timeout, when apply succeeded).
+
+#### Step 2: Verify in GitHub
+
+```
+Settings → Environments → <branch-name> → Environment secrets → KUBECONFIG
 ```
 
-#### Step 2: Locate KUBECONFIG File
+#### Step 3: Manual fallback (Rancher unavailable or publish failed)
 
-The file is created in your Terraform outputs:
+**Option A — Control plane node:**
 
 ```bash
-# Location in repository:
-terraform/implementations/aws/infra/kubeconfig_<cluster-name>
-
-# Example:
-terraform/implementations/aws/infra/kubeconfig_soil38
+ssh -i mosip-aws.pem ubuntu@<control-plane-ip>
+cat /home/ubuntu/.kube/<cluster-tf-name>-CONTROL-PLANE-NODE-1.yaml
 ```
 
-#### Step 3: Download KUBECONFIG
-
-**Option 1: From GitHub Actions Artifacts**
-1. Go to your GitHub repository
-2. Click "Actions" tab
-3. Find the completed "Terraform Infrastructure" workflow
-4. Scroll to "Artifacts" section at the bottom
-5. Download artifact containing kubeconfig
-
-**Option 2: From Terraform Outputs**
-```bash
-# View kubeconfig content
-cd terraform/implementations/aws/infra/
-cat kubeconfig_<your-cluster-name>
-```
+**Option B — Rancher UI:** Cluster → Kubeconfig File → copy contents → paste as environment secret `KUBECONFIG`.
 
 #### Step 4: Test KUBECONFIG Locally (Optional)
 

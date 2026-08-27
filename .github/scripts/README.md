@@ -17,6 +17,12 @@ These scripts handle complex operations that would otherwise make workflow files
 | `setup-gpg.sh` | Configure GPG environment for encryption | terraform.yml, terraform-destroy.yml | Active |
 | `generate-pg-secrets.sh` | Generate PostgreSQL secrets (legacy) | N/A | Legacy |
 | `cleanup-state-locking.sh` | Clean up DynamoDB state locks | terraform-destroy.yml | Active |
+| `rancher-register-cluster.sh` | Mint/apply Rancher import on cluster | terraform.yml | Active |
+| `rancher-grant-cluster-access.sh` | Multi-team RBAC from JSON catalog | terraform.yml | Active |
+| `rancher-fetch-kubeconfig.sh` | Fetch kubeconfig from Rancher API | terraform.yml | Active |
+| `write-rancher-runtime-tfvars.sh` | Runtime tfvars for import URL | terraform.yml, terraform-destroy.yml | Active |
+| `wg-env.sh` | WireGuard onboard/offboard | wg-onboard.yml, wg-offboard.yml | Active |
+| `setup-environment-protection.sh` | GitHub Environment reviewers | setup-environment-protection.yml | Active |
 | `test-*.sh` | Various testing and validation scripts | Manual testing | Active |
 | `validate-workflow-integration.sh` | Validate workflow integration | Manual testing | Active |
 | `setup-s3-backend.sh` | Empty placeholder | N/A | Placeholder |
@@ -130,6 +136,28 @@ These scripts handle complex operations that would otherwise make workflow files
 **Status**: Legacy - No longer used 
 **Reason**: PostgreSQL configuration now handled via Terraform variables (`enable_postgresql_setup`) 
 **Replacement**: Configure PostgreSQL in `terraform/implementations/{cloud}/{component}/{cloud}.tfvars`
+
+## Rancher automation scripts
+
+Used by `terraform.yml` when `ENABLE_RANCHER_IMPORT=true`:
+
+| Script | Purpose |
+|--------|---------|
+| `rancher-register-cluster.sh` | Create cluster in Rancher; `--apply-on-host` runs import on control plane |
+| `rancher-grant-cluster-access.sh` | Apply RBAC from `.github/config/rancher-access-grants.json` (`--apply-catalog`) |
+| `rancher-fetch-kubeconfig.sh` | Poll until cluster active; output kubeconfig YAML |
+| `write-rancher-runtime-tfvars.sh` | Write ephemeral `-var-file` for `enable_rancher_import` / import URL |
+
+**Grant reliability:** binding list is prefetched once; HTTP 409 treated as success. See [docs/agents.md](../../docs/agents.md).
+
+## WireGuard automation
+
+| Script | Commands |
+|--------|----------|
+| `wg-env.sh` | `onboard` — allocate peers, publish `TF_WG_CONFIG` / `CLUSTER_WIREGUARD_WG*` secrets |
+| `wg-env.sh` | `offboard` — revoke peers on server, delete secrets, regenerate slots |
+
+Requires `ACTION_PAT` with **Secrets: Read and write**.
 
 ## Placeholder Scripts
 

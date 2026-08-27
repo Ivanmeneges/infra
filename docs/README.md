@@ -61,6 +61,7 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 |----------|-------------|-----------------|
 | **[Self-Service Deployment Guide](SELF_SERVICE_DEPLOYMENT_GUIDE.md)** | Full automated deployment runbook for QA/dev teams | QA, dev, new team members |
 | **[Automation Improvements](AUTOMATION_IMPROVEMENTS.md)** | Approval gates, multi-team Rancher, WG offboarding | DevOps, platform team |
+| **[Agents & Workflow Reference](agents.md)** | All 18 GitHub Actions workflows — triggers, secrets, testiv playbook | AI agents, operators, DevOps |
 | **[Main README](../README.md)** | Complete deployment overview and quick start guide | Everyone - start here |
 | **[Glossary](GLOSSARY.md)** | Technical terms explained in plain language | Beginners |
 | **[Secret Generation Guide](SECRET_GENERATION_GUIDE.md)** | How to create all required secrets and credentials | Everyone before deployment |
@@ -145,6 +146,7 @@ Welcome to the MOSIP Infrastructure documentation! This index helps you find exa
 | Generate SSH keys | [Secret Generation Guide - SSH Keys](SECRET_GENERATION_GUIDE.md#1-ssh-keys) |
 | Get AWS credentials | [Secret Generation Guide - AWS Credentials](SECRET_GENERATION_GUIDE.md#3-aws-credentials) |
 | Run my first workflow | [Workflow Guide - Base Infrastructure](WORKFLOW_GUIDE.md#workflow-1-base-infrastructure) |
+| Look up any GitHub Actions workflow | [agents.md](agents.md) |
 | Understand dry-run vs apply | [Workflow Guide - Parameters](WORKFLOW_GUIDE.md#terraform-apply-checkbox) |
 | Fix "clusterid not found" error | [DSF Configuration Guide - clusterid](DSF_CONFIGURATION_GUIDE.md#critical-configuration-clusterid) |
 | Configure PostgreSQL | [DSF Configuration Guide - PostgreSQL](DSF_CONFIGURATION_GUIDE.md#2-postgresql-configuration) |

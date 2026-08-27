@@ -118,3 +118,35 @@ Default required reviewers for the **Setup environment protection** workflow.
 | `wait_timer_minutes` | Optional delay before reviewers can approve |
 
 After running **Setup environment protection** for `qajava11`, any job with `environment: qajava11` pauses until a reviewer approves.
+
+---
+
+## testiv branch example
+
+Branch **`testiv`** on `mosip/infra` uses an expanded team catalog:
+
+```json
+[
+  { "group": "DEVOPS", "role": "cluster-owner", "enabled": true, "fix_misbound_user": true },
+  { "group": "QA", "role": "rt-jdzrj", "enabled": false },
+  { "group": "DEV", "role": "rt-jdzrj", "enabled": false },
+  { "group": "PM", "role": "rt-rgcq7", "enabled": false },
+  { "group": "PO", "role": "rt-rgcq7", "enabled": false },
+  { "group": "BA", "role": "rt-rgcq7", "enabled": false },
+  { "group": "TL+ARCHITECT", "role": "rt-rgcq7", "enabled": false },
+  { "group": "AUTOMATION", "role": "rt-89ntg", "enabled": false }
+]
+```
+
+Custom `rt-*` values are Rancher **role template IDs** (not built-in `cluster-member`). DEVOPS is always applied via `--apply-catalog`; other teams require `GRANT_GROUP_ACCESS=true` or per-env `RANCHER_ACCESS_GRANTS` patch.
+
+### Grant troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Timeout listing bindings (curl 28) | Ensure latest `rancher-grant-cluster-access.sh` (binding cache prefetch) |
+| 409 on create | Harmless — binding already exists; script treats as success |
+| Partial grants | Re-run terraform apply (no-op) with `GRANT_GROUP_ACCESS=true` |
+| KUBECONFIG missing after grant fail | Re-run with `GRANT_GROUP_ACCESS=false`, `PUBLISH_KUBECONFIG=true` |
+
+See [agents.md](../../docs/agents.md) for full workflow context.

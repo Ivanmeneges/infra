@@ -1,7 +1,8 @@
 # MOSIP Rapid Deployment — Self-Service Guide for QA / Dev Teams
 
-**Version:** 1.0  
-**Last updated:** July 2026  
+**Version:** 1.1  
+**Last updated:** August 2026  
+**Reference branch:** [`testiv`](https://github.com/mosip/infra/tree/testiv) on `mosip/infra`  
 **Audience:** New QA, dev, or platform team members with no prior MOSIP deployment experience  
 **Scope:** AWS self-service rapid deployment using GitHub Actions automation  
 
@@ -16,7 +17,7 @@ This guide explains how to deploy a full MOSIP environment **without DevOps in t
 - Which **DSF and Terraform files** to edit (and which you do **not** need to edit)
 - What is still **manual** even with automation
 
-> **Branch requirement:** Use a branch that includes the self-service automation workflows (for example `Ivanmeneges-patch-kubeconfig` or `develop` after PR merge). The plain `develop` branch **without** these workflows only supports the legacy manual path described in Appendix A.
+> **Branch requirement:** Use a branch that includes the self-service automation workflows. The active reference environment is **`testiv`** on `mosip/infra`. Feature branches such as `Ivanmeneges-patch-kubeconfig` carry the latest Rancher fixes before merge to `testiv`. The plain `develop` branch **without** these workflows only supports the legacy manual path described in Appendix A.
 
 ---
 
@@ -50,6 +51,7 @@ So **your Git branch name is your GitHub Environment name**.
 
 | Branch name | GitHub Environment | Example secrets location |
 |-------------|-------------------|--------------------------|
+| `testiv` | `testiv` | Settings → Environments → `testiv` |
 | `qajava11` | `qajava11` | Settings → Environments → `qajava11` |
 | `dev-int` | `dev-int` | Settings → Environments → `dev-int` |
 
@@ -143,7 +145,7 @@ Go to: **Repository → Settings → Secrets and variables → Actions → Repos
 | `AWS_ACCESS_KEY_ID` | AWS access |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret |
 | `mosip-aws` (or your `ssh_key_name`) | **Full SSH private key** for EC2 nodes |
-| `GH_INFRA_PAT` | Publish `KUBECONFIG`, trigger child Helmsman workflows |
+| `GH_INFRA_PAT` | Publish `KUBECONFIG`, trigger child Helmsman workflows — needs **Secrets: Read and write** |
 | `ACTION_PAT` | WireGuard onboard — write environment secrets |
 | `MOSIP_AWS_PEM` | WireGuard onboard — SSH key for jump server |
 
@@ -607,6 +609,8 @@ kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
 
 | Mistake | Symptom | Fix |
 |---------|---------|-----|
+| Rancher grant timeout (N/8 teams) | Workflow failed; no `KUBECONFIG` (older runs) | Use latest scripts; re-run with `GRANT_GROUP_ACCESS=false`, `PUBLISH_KUBECONFIG=true` — publish runs with `if: always()` |
+| `GH_INFRA_PAT` missing Secrets scope | 403 on `gh secret set KUBECONFIG` | Regenerate PAT with **Secrets: Read and write** |
 | Branch name ≠ GitHub Environment name | "Secret not found" | Rename environment or branch to match |
 | Skipped WireGuard onboard | Terraform infra fails on `TF_WG_CONFIG` | Run WireGuard onboard workflow first |
 | `ENABLE_RANCHER_IMPORT=false` | No auto KUBECONFIG, manual Rancher steps | Enable import + set Rancher secrets |
@@ -677,6 +681,7 @@ See also: `WORKFLOW_GUIDE.md`, `DSF_CONFIGURATION_GUIDE.md`
 | `HELMSMAN_EXTERNAL_GUIDE.md` | External DSF details |
 | `HELMSMAN_MOSIP_GUIDE.md` | MOSIP DSF details |
 | `TERRAFORM_WORKFLOW_GUIDE.md` | Terraform workflow parameters |
+| `agents.md` | All 18 workflows — agent/operator reference (testiv) |
 | `terraform/base-infra/WIREGUARD_SETUP.md` | Manual WireGuard (legacy) |
 
 ---
