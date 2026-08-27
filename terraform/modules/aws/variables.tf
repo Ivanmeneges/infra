@@ -5,6 +5,28 @@ variable "K8S_CONTROL_PLANE_NODE_COUNT" { type = number }
 variable "K8S_ETCD_NODE_COUNT" { type = number }
 variable "K8S_WORKER_NODE_COUNT" { type = number }
 
+# Deployment type (infra or observ-infra)
+variable "DEPLOYMENT_TYPE" {
+  description = "Type of deployment: 'infra' for regular MOSIP infrastructure or 'observ-infra' for observability infrastructure"
+  type        = string
+  default     = "infra"
+  validation {
+    condition     = contains(["infra", "observ-infra"], var.DEPLOYMENT_TYPE)
+    error_message = "DEPLOYMENT_TYPE must be either 'infra' or 'observ-infra'."
+  }
+}
+
+# NGINX deployment type
+variable "NGINX_TYPE" {
+  description = "Type of NGINX setup: 'mosip' for full MOSIP deployment or 'observability' for observation tools only"
+  type        = string
+  default     = "mosip"
+  validation {
+    condition     = contains(["mosip", "observability"], var.NGINX_TYPE)
+    error_message = "NGINX_TYPE must be either 'mosip' or 'observability'."
+  }
+}
+
 # Availability Zones configuration
 variable "SPECIFIC_AVAILABILITY_ZONES" {
   description = "Specific availability zones to use for VM deployment (comma-separated list). If empty, uses all available AZs in the region."
@@ -24,21 +46,15 @@ variable "ENABLE_RANCHER_IMPORT" {
 variable "RANCHER_IMPORT_URL" {
   description = "Rancher import URL for kubectl apply"
   type        = string
+  default     = ""
 
   validation {
     condition = (
-      can(regex("^\"kubectl apply -f https://rancher\\.mosip\\.net/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.RANCHER_IMPORT_URL)) ||
-      can(regex("^\"kubectl apply -f https://rancher\\.[a-zA-Z0-9\\*\\.\\-]+\\.net/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.RANCHER_IMPORT_URL))
+      var.RANCHER_IMPORT_URL == "" ||
+      can(regex("^\"kubectl apply -f https://[a-zA-Z0-9][a-zA-Z0-9\\.\\-]*(:[0-9]{1,5})?/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.RANCHER_IMPORT_URL))
     )
-    error_message = "The RANCHER_IMPORT_URL must be in the format: '\"kubectl apply -f https://rancher.mosip.net/v3/import/<ID>.yaml\"' or '\"kubectl apply -f https://rancher.***.net/v3/import/<ID>.yaml\"'"
+    error_message = "The RANCHER_IMPORT_URL must be empty (when enable_rancher_import is false) or in the format: '\"kubectl apply -f https://<rancher-host>/v3/import/<ID>.yaml\"'"
   }
-  # validation {
-  #   condition = (
-  #     var.RANCHER_IMPORT_URL == "" ||
-  #     can(regex("^\"kubectl apply -f https://rancher\\.mosip\\.net/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.RANCHER_IMPORT_URL))
-  #   )
-  #   error_message = "The RANCHER_IMPORT_URL must be empty or in the format: '\"kubectl apply -f https://rancher.mosip.net/v3/import/<ID>.yaml\"'"
-  # }
 }
 
 variable "CLUSTER_ENV_DOMAIN" {
@@ -181,4 +197,45 @@ variable "mosip_infra_branch" {
   description = "Branch of the MOSIP infrastructure repository"
   type        = string
   default     = "develop"
+}
+
+# ActiveMQ Configuration Variables
+variable "enable_activemq_setup" {
+  description = "Enable ActiveMQ EBS volume setup on the NGINX node"
+  type        = bool
+  default     = false
+}
+
+variable "nginx_node_ebs_volume_size_3" {
+  description = "EBS volume size (GB) for ActiveMQ data on the NGINX node — set to 0 to disable"
+  type        = number
+  default     = 0
+}
+
+variable "activemq_storage_device" {
+  description = "Block device path of the 3rd EBS volume for ActiveMQ"
+  type        = string
+  default     = "/dev/nvme3n1"
+
+  validation {
+    condition     = can(regex("^/dev/.+$", var.activemq_storage_device))
+    error_message = "activemq_storage_device must be a valid device path starting with /dev/ (e.g., /dev/nvme3n1 or /dev/disk/by-id/nvme-volume-id)."
+  }
+}
+
+variable "activemq_mount_point" {
+  description = "Mount point for ActiveMQ persistent storage"
+  type        = string
+  default     = "/srv/activemq"
+
+  validation {
+    condition     = can(regex("^/([A-Za-z0-9._-]+)(/.*)?$", var.activemq_mount_point))
+    error_message = "activemq_mount_point must be a valid absolute directory path (e.g., /srv/activemq)."
+  }
+}
+
+variable "activemq_nfs_allowed_hosts" {
+  description = "Hosts allowed to mount the NFS export (written to /etc/exports). Use '*' for any host or a CIDR/IP range e.g. '10.0.0.0/8'."
+  type        = string
+  default     = "*"
 }

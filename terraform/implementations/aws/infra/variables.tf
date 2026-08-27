@@ -86,12 +86,13 @@ variable "enable_rancher_import" {
 variable "rancher_import_url" {
   description = "Rancher import URL for kubectl apply"
   type        = string
+  default     = ""
   validation {
     condition = (
-      can(regex("^\"kubectl apply -f https://rancher\\.mosip\\.net/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.rancher_import_url)) ||
-      can(regex("^\"kubectl apply -f https://rancher\\.[a-zA-Z0-9\\*\\.\\-]+\\.net/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.rancher_import_url))
+      var.rancher_import_url == "" ||
+      can(regex("^\"kubectl apply -f https://[a-zA-Z0-9][a-zA-Z0-9\\.\\-]*(:[0-9]{1,5})?/v3/import/[a-zA-Z0-9_\\-]+\\.yaml\"$", var.rancher_import_url))
     )
-    error_message = "The RANCHER_IMPORT_URL must be in the format: '\"kubectl apply -f https://rancher.mosip.net/v3/import/<ID>.yaml\"' or '\"kubectl apply -f https://rancher.***.net/v3/import/<ID>.yaml\"'"
+    error_message = "The rancher_import_url must be empty (when enable_rancher_import is false) or in the format: '\"kubectl apply -f https://<rancher-host>/v3/import/<ID>.yaml\"'"
   }
 }
 
@@ -224,4 +225,45 @@ variable "mosip_infra_branch" {
   description = "Branch of the MOSIP infrastructure repository"
   type        = string
   default     = "develop"
+}
+
+# ActiveMQ Configuration Variables
+variable "enable_activemq_setup" {
+  description = "Enable ActiveMQ EBS volume setup on the NGINX node"
+  type        = bool
+  default     = false
+}
+
+variable "nginx_node_ebs_volume_size_3" {
+  description = "EBS volume size (GB) for ActiveMQ data on the NGINX node — set to 0 to disable"
+  type        = number
+  default     = 0
+}
+
+variable "activemq_storage_device" {
+  description = "Block device path of the 3rd EBS volume for ActiveMQ"
+  type        = string
+  default     = "/dev/nvme3n1"
+  validation {
+    condition     = startswith(var.activemq_storage_device, "/dev/") && length(var.activemq_storage_device) > length("/dev/")
+    error_message = "activemq_storage_device must start with '/dev/' followed by at least one character (e.g. '/dev/nvme3n1')."
+  }
+}
+
+variable "activemq_mount_point" {
+  description = "Mount point for ActiveMQ persistent storage"
+  type        = string
+  default     = "/srv/activemq"
+  # Note: cross-variable guard (!var.enable_activemq_setup || ...) requires Terraform >= 1.9;
+  # project constraint is >= 1.0, so validation applies unconditionally.
+  validation {
+    condition     = startswith(var.activemq_mount_point, "/") && var.activemq_mount_point != "/"
+    error_message = "activemq_mount_point must be an absolute path starting with '/' and must not be the root path '/'."
+  }
+}
+
+variable "activemq_nfs_allowed_hosts" {
+  description = "Hosts allowed to mount the NFS export (written to /etc/exports). Use '*' for any host or a CIDR/IP range e.g. '10.0.0.0/8'."
+  type        = string
+  default     = "*"
 }

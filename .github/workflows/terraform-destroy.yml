@@ -16,6 +16,11 @@
 #
 name: terraform destroy
 
+# Prevent concurrent destroy runs for same component
+concurrency:
+  group: terraform-destroy-${{ github.event.inputs.CLOUD_PROVIDER }}-${{ github.event.inputs.TERRAFORM_COMPONENT }}-${{ github.event.inputs.INFRA_PROFILE }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:
@@ -36,6 +41,14 @@ on:
           - base-infra
           - observ-infra
         default: infra
+      INFRA_PROFILE:
+        description: 'Infrastructure profile (only for infra component — ignored for base-infra/observ-infra)'
+        required: false
+        type: choice
+        options:
+          - mosip
+          - esignet-standalone
+        default: mosip
       BACKEND_TYPE:
         description: 'Choose Terraform backend type (must match the one used during creation)'
         required: true
@@ -52,7 +65,7 @@ on:
         description: 'Enable state locking cleanup (must match the setting used during creation)'
         required: false
         type: boolean
-        default: true
+        default: false
       SSH_PRIVATE_KEY:
         description: 'The GitHub secret containing the private key of the SSH key named in the preceding input variable `SSH_PRIVATE_KEY` is used for SSH login purposes on nginx node.'
         required: true
@@ -71,13 +84,15 @@ env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   TF_VAR_ssh_private_key: ${{ secrets[inputs.SSH_PRIVATE_KEY] }}
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GH_INFRA_PAT }}
 
 jobs:
   terraform-destroy:
     runs-on: ubuntu-latest
     # Use dynamic environment based on current branch name
     environment: ${{ github.ref_name }}
+    permissions:
+      contents: write
     defaults:
       run:
         shell: bash
@@ -85,6 +100,9 @@ jobs:
         working-directory: 'terraform/implementations/${{ inputs.CLOUD_PROVIDER }}/${{ inputs.TERRAFORM_COMPONENT }}'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for rebase
+          token: ${{ secrets.GH_INFRA_PAT }}
 
       - name: Check for required implementation directory
         run: |
@@ -95,11 +113,17 @@ jobs:
             exit 1
           fi
           
-          # Check if tfvars file exists
-          if [ ! -f "${{ inputs.CLOUD_PROVIDER }}.tfvars" ]; then
-            echo "Configuration file '${{ inputs.CLOUD_PROVIDER }}.tfvars' not found in current directory."
+          # Check if tfvars file exists (profile-aware for infra component)
+          TFVARS_FILE="${{ inputs.CLOUD_PROVIDER }}.tfvars"
+          if [ "${{ inputs.TERRAFORM_COMPONENT }}" = "infra" ] && [ -n "${{ inputs.INFRA_PROFILE }}" ]; then
+            TFVARS_FILE="profiles/${{ inputs.INFRA_PROFILE }}/${{ inputs.CLOUD_PROVIDER }}.tfvars"
+          fi
+          if [ ! -f "$TFVARS_FILE" ]; then
+            echo "Configuration file '$TFVARS_FILE' not found in current directory."
             exit 1
           fi
+          echo "TFVARS_FILE=$TFVARS_FILE" >> $GITHUB_ENV
+          echo "Using tfvars: $TFVARS_FILE"
 
       - name: Check Cloud Storage for Remote State (All Providers)
         run: |
@@ -159,13 +183,18 @@ jobs:
       - name: Configure Terraform Backend for State Management
         run: |
           # Use backend configuration script for cleaner code
+          PROFILE_ARG=""
+          if [ "${{ inputs.TERRAFORM_COMPONENT }}" = "infra" ] && [ -n "${{ inputs.INFRA_PROFILE }}" ]; then
+            PROFILE_ARG="--profile ${{ inputs.INFRA_PROFILE }}"
+          fi
           ../../../../.github/scripts/configure-backend.sh \
             --type "${{ inputs.BACKEND_TYPE }}" \
             --provider "${{ inputs.CLOUD_PROVIDER }}" \
             --component "${{ inputs.TERRAFORM_COMPONENT }}" \
             --branch "${{ github.ref_name }}" \
             --remote-config "${{ inputs.REMOTE_BACKEND_CONFIG }}" \
-            ${{ inputs.ENABLE_STATE_LOCKING == true && '--enable-locking' || '' }}
+            ${{ inputs.ENABLE_STATE_LOCKING == true && '--enable-locking' || '' }} \
+            $PROFILE_ARG
 
       - name: Skip SSH Host key verification
         run: |
@@ -304,7 +333,8 @@ jobs:
         run: |
           ../../../../.github/scripts/decrypt-state.sh \
             --backend-type "${{ inputs.BACKEND_TYPE }}" \
-            --passphrase "${{ secrets.GPG_PASSPHRASE }}"
+            --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+            --operation "destroy"
 
       - name: Display Destruction Warning
         run: |
@@ -329,6 +359,19 @@ jobs:
             echo "TERRAFORM_DESTROY confirmed - proceeding with destruction"
           fi
 
+      - name: Prepare destroy env (disable Rancher import)
+        if: ${{ inputs.TERRAFORM_COMPONENT == 'infra' && inputs.TERRAFORM_DESTROY == true }}
+        run: |
+          # Refresh/plan/destroy re-evaluate module preconditions; Rancher import URL is
+          # only minted during apply and must not block teardown. Profile aws.tfvars may
+          # have enable_rancher_import=true (automatic or manual URL), so override it off.
+          RUNTIME_VARS_FILE="${RUNNER_TEMP}/rancher-runtime.tfvars"
+          "$GITHUB_WORKSPACE/.github/scripts/write-rancher-runtime-tfvars.sh" \
+            --out "$RUNTIME_VARS_FILE" \
+            --enable false
+          echo "RANCHER_RUNTIME_VARS_FILE=$RUNTIME_VARS_FILE" >> "$GITHUB_ENV"
+          echo "Rancher import disabled for destroy (runtime -var-file override)"
+
       - name: Terraform Init
         run: |
           # First try normal init
@@ -338,20 +381,20 @@ jobs:
           fi
 
       - name: Terraform refresh
-        run: terraform refresh -input=false -var-file="${{ inputs.CLOUD_PROVIDER }}.tfvars" -no-color
+        run: terraform refresh -input=false -var-file="$TFVARS_FILE" ${RANCHER_RUNTIME_VARS_FILE:+-var-file="$RANCHER_RUNTIME_VARS_FILE"} -no-color
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
 
       - name: Terraform Destroy Plan
         id: destroy-plan
         run: |
           echo "Showing what will be destroyed..."
-          terraform plan -destroy -input=false -var-file="${{ inputs.CLOUD_PROVIDER }}.tfvars" -no-color
+          terraform plan -destroy -input=false -var-file="$TFVARS_FILE" ${RANCHER_RUNTIME_VARS_FILE:+-var-file="$RANCHER_RUNTIME_VARS_FILE"} -no-color
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
         continue-on-error: true
 
       - name: Terraform Destroy
         id: destroy
-        run: terraform destroy -input=false -var-file="${{ inputs.CLOUD_PROVIDER }}.tfvars" -no-color -auto-approve
+        run: terraform destroy -input=false -var-file="$TFVARS_FILE" ${RANCHER_RUNTIME_VARS_FILE:+-var-file="$RANCHER_RUNTIME_VARS_FILE"} -no-color -auto-approve
         if: "${{ inputs.TERRAFORM_DESTROY  == true }}"
         continue-on-error: true
 
@@ -404,13 +447,24 @@ jobs:
               --destroy-success "false"
               
             echo "Adding encrypted state files for debugging purposes"
+            # Extract dynamic path from backend.tf to commit targeted profile states
+            if [ -f "backend.tf" ]; then
+              BACKEND_PATH=$(grep -A 5 'backend "local"' backend.tf | grep 'path' | sed 's/.*path = "\([^"]*\)".*/\1/' | head -1)
+              if [ -n "$BACKEND_PATH" ]; then
+                git add -f "${BACKEND_PATH}*" 2>/dev/null || echo "No isolated state files to add for $BACKEND_PATH"
+              fi
+            fi
+
             # Add both unencrypted (if any remain) and encrypted state files
-            git add -f *.tfstate* 2>/dev/null || echo "No .tfstate files found"
-            git add -f *.gpg 2>/dev/null || echo "No .gpg files found"
+            git add -f *.tfstate* 2>/dev/null || echo "No base .tfstate files found"
+            git add -f *.gpg 2>/dev/null || echo "No base .gpg files found"
           fi
           
           git add -f backend.tf 2>/dev/null || echo "No backend.tf file found"
           git add -f *.tf 2>/dev/null || echo "No .tf files to add"
+          
+          # Remove embedded git repositories to avoid submodule issues
+          find . -name ".git" -type d -not -path "./.git" -exec rm -rf {} + 2>/dev/null || true
           
           echo "Git status after adding files:"
           git status
@@ -436,11 +490,33 @@ jobs:
             fi
             
             git commit -s -am "$commit_msg"
+            
+            # Pull with rebase to avoid push rejection
+            echo "Pulling latest changes with rebase..."
+            pull_output=$(git pull --rebase origin ${{ github.ref_name }} 2>&1)
+            pull_exit=$?
+            echo "$pull_output"
+            if [ $pull_exit -ne 0 ]; then
+              if echo "$pull_output" | grep -qE "Already up to date|Current branch .* is up to date"; then
+                echo "Already up to date, nothing to pull."
+              elif echo "$pull_output" | grep -qE "CONFLICT|could not apply|Resolve all conflicts|You must edit the files"; then
+                echo "⚠️ Rebase conflict detected. Aborting rebase and merging with ours strategy to preserve Terraform state..."
+                git rebase --abort
+                git fetch origin ${{ github.ref_name }}
+                git merge -X ours origin/${{ github.ref_name }} --no-edit
+                echo "Merge complete. Terraform state preserved."
+              else
+                echo "❌ git pull --rebase failed with a non-conflict error:"
+                echo "$pull_output"
+                exit 1
+              fi
+            fi
+            
             git push
             echo "Changes committed and pushed successfully"
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_INFRA_PAT }}
         if: "${{ inputs.TERRAFORM_DESTROY == true }}"
       - name: Terraform destroy status
         if: ${{ steps.destroy.outcome == 'failure' }}

@@ -1,0 +1,661 @@
+name: Deploy eSignet using Helmsman
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Deployment profile to use"
+        required: true
+        default: "mosip-platform-1.2.0.x"
+        type: choice
+        options:
+          - mosip-platform-1.2.0.x
+          - mosip-platform-1.2.1.x
+          - esignet-standalone
+      mode:
+        description: "Choose Helmsman mode: dry-run or apply"
+        required: true
+        default: "dry-run"
+        type: choice
+        options:
+          - dry-run
+          - apply
+      skip_mosip_dsf_check:
+        description: "Skip MOSIP DSF completion check (for standalone deployment)"
+        required: false
+        default: false
+        type: boolean
+      delete_existing_jobs:
+        description: "Delete existing onboarder jobs before deployment (required for re-runs)"
+        required: false
+        default: false
+        type: boolean
+      domain_name:
+        description: "Domain name for this environment (e.g. example.xyz.net)"
+        required: true
+        type: string
+      esignet_db_port:
+        description: "PostgreSQL port for eSignet databases (e.g. 5433 for MOSIP platform external postgres)"
+        required: true
+        type: string
+      mosipid1_domain_name:
+        description: "MOSIP-ID1 domain name for this environment (e.g. mosipenv1.xyz.net)"
+        required: false
+        type: string
+      enable_mosipid2:
+        description: "Enable MOSIP-ID2 eSignet instance (deploys softhsm, esignet, oidc-ui, mock-rp for mosipid2)"
+        required: false
+        default: false
+        type: boolean
+      mosipid2_domain_name:
+        description: "MOSIP-ID2 domain name for this environment (e.g. qabase.xyz.net)"
+        required: false
+        type: string
+      env_name:
+        description: "Environment name (e.g. sandbox, dev, staging)"
+        required: false
+        type: string
+  push:
+    paths:
+      - Helmsman/dsf/**/esignet-dsf.yaml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name }}
+    steps:
+      - name: Validate required variables
+        run: |
+          errors=()
+          PROFILE="${{ github.event.inputs.profile }}"
+          DOMAIN="${{ github.event.inputs.domain_name || vars.DOMAIN_NAME }}"
+          ENV="${{ github.event.inputs.env_name || vars.ENV_NAME }}"
+          ESIGNET_DB_PORT="${{ github.event.inputs.esignet_db_port || vars.ESIGNET_DB_PORT }}"
+          [ -z "$DOMAIN" ]          && errors+=("domain_name is empty — set vars.DOMAIN_NAME under Environment '${{ github.ref_name }}'")
+          [ -z "$ENV" ]             && errors+=("env_name is empty — set vars.ENV_NAME under Environment '${{ github.ref_name }}'")
+          [ -z "$ESIGNET_DB_PORT" ] && errors+=("esignet_db_port is empty — set vars.ESIGNET_DB_PORT under Environment '${{ github.ref_name }}'")
+          if [ ${#errors[@]} -gt 0 ]; then
+            echo "❌ Required variables missing:"
+            printf '  - %s\n' "${errors[@]}"
+            echo "Go to: Settings → Environments → ${{ github.ref_name }} → Variables"
+            exit 1
+          fi
+          echo "✓ domain_name     = $DOMAIN"
+          echo "✓ env_name        = $ENV"
+          echo "✓ esignet_db_port = $ESIGNET_DB_PORT"
+          # mosipid1_domain_name and mosipid2_domain_name are esignet standalone only.
+          # Push events always target esignet (path filter); dispatch uses explicit profile input.
+          if [ -z "$PROFILE" ] || [ "$PROFILE" = "esignet-standalone" ]; then
+            MOSIPID1_DOMAIN="${{ github.event.inputs.mosipid1_domain_name || vars.MOSIPID1_DOMAIN_NAME }}"
+            MOSIPID2_DOMAIN="${{ github.event.inputs.mosipid2_domain_name || vars.MOSIPID2_DOMAIN_NAME }}"
+            echo "✓ mosipid1_domain_name = $MOSIPID1_DOMAIN (esignet standalone)"
+            echo "✓ mosipid2_domain_name = $MOSIPID2_DOMAIN (esignet standalone)"
+            MOSIPID1_SPRING_LABEL="${{ vars.ESIGNET_MOSIPID1_SPRING_CONFIG_LABEL }}"
+            MOSIPID2_SPRING_LABEL="${{ vars.ESIGNET_MOSIPID2_SPRING_CONFIG_LABEL }}"
+            echo "✓ mosipid1_spring_config_label = ${MOSIPID1_SPRING_LABEL:-develop} (esignet standalone, default: develop)"
+            echo "✓ mosipid2_spring_config_label = ${MOSIPID2_SPRING_LABEL:-develop} (esignet standalone, default: develop)"
+          else
+            MOSIPID1_PROVIDED="${{ github.event.inputs.mosipid1_domain_name }}"
+            MOSIPID2_PROVIDED="${{ github.event.inputs.mosipid2_domain_name }}"
+            if [ -n "$MOSIPID1_PROVIDED" ] || [ -n "$MOSIPID2_PROVIDED" ]; then
+              echo "⚠ mosipid1_domain_name / mosipid2_domain_name are only used for esignet standalone profile — ignoring for profile=$PROFILE"
+            fi
+          fi
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    environment:
+      name: ${{ github.ref_name }}
+    env:
+      KUBECONFIG: ${{ github.workspace }}/.kube/config
+      PATH: ${{ github.workspace }}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      KUBECTL_PATH: ${{ github.workspace }}/.local/bin/kubectl
+      domain_name:           ${{ github.event.inputs.domain_name           || vars.DOMAIN_NAME }}
+      esignet_db_port:       ${{ github.event.inputs.esignet_db_port       || vars.ESIGNET_DB_PORT }}
+      mosipid1_domain_name:  ${{ github.event.inputs.mosipid1_domain_name  || vars.MOSIPID1_DOMAIN_NAME }}
+      mosipid2_domain_name:  ${{ github.event.inputs.mosipid2_domain_name  || vars.MOSIPID2_DOMAIN_NAME }}
+      env_name:              ${{ github.event.inputs.env_name              || vars.ENV_NAME }}
+      MOSIPID2_ENABLED:      ${{ github.event.inputs.enable_mosipid2 == 'true' && 'true' || 'false' }}
+      # All secrets below are ENVIRONMENT secrets (not repository secrets)
+      # Configure them in: Repository → Settings → Environments → <branch-name> → Secrets
+      # Mock Relying Party Service secrets (base64 encoded PEM)
+      MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY: ${{ secrets.MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY }}
+      MOCK_RELYING_PARTY_JWE_PRIVATE_KEY: ${{ secrets.MOCK_RELYING_PARTY_JWE_PRIVATE_KEY }}
+      # eSignet Captcha secrets (plain text from Google reCAPTCHA)
+      ESIGNET_CAPTCHA_SITE_KEY: ${{ secrets.ESIGNET_CAPTCHA_SITE_KEY }}
+      ESIGNET_CAPTCHA_SECRET_KEY: ${{ secrets.ESIGNET_CAPTCHA_SECRET_KEY }}
+      # Per-namespace captcha secrets — required for esignet standalone profile only
+      ESIGNET_MOSIPID1_CAPTCHA_SITE_KEY:     ${{ secrets.ESIGNET_MOSIPID1_CAPTCHA_SITE_KEY }}
+      ESIGNET_MOSIPID1_CAPTCHA_SECRET_KEY:   ${{ secrets.ESIGNET_MOSIPID1_CAPTCHA_SECRET_KEY }}
+      ESIGNET_MOSIPID2_CAPTCHA_SITE_KEY:     ${{ secrets.ESIGNET_MOSIPID2_CAPTCHA_SITE_KEY }}
+      ESIGNET_MOSIPID2_CAPTCHA_SECRET_KEY:   ${{ secrets.ESIGNET_MOSIPID2_CAPTCHA_SECRET_KEY }}
+      # MOSIPID1 / MOSIPID2 remote Keycloak admin + Postgres passwords
+      MOSIPID1_KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.MOSIPID1_KEYCLOAK_ADMIN_PASSWORD }}
+      MOSIPID2_KEYCLOAK_ADMIN_PASSWORD: ${{ secrets.MOSIPID2_KEYCLOAK_ADMIN_PASSWORD }}
+      MOSIPID1_POSTGRES_PASSWORD:       ${{ secrets.MOSIPID1_POSTGRES_PASSWORD }}
+      MOSIPID2_POSTGRES_PASSWORD:       ${{ secrets.MOSIPID2_POSTGRES_PASSWORD }}
+      ESIGNET_SUNBIRD_CAPTCHA_SITE_KEY:   ${{ secrets.ESIGNET_SUNBIRD_CAPTCHA_SITE_KEY }}
+      ESIGNET_SUNBIRD_CAPTCHA_SECRET_KEY: ${{ secrets.ESIGNET_SUNBIRD_CAPTCHA_SECRET_KEY }}
+      # Spring config label per namespace — controls which Git branch/tag the config-server uses
+      # Set as Environment Variables in Repository → Settings → Environments → <branch> → Variables
+      # If unset, hooks default to 'develop'
+      ESIGNET_MOSIPID1_SPRING_CONFIG_LABEL: ${{ vars.ESIGNET_MOSIPID1_SPRING_CONFIG_LABEL }}
+      ESIGNET_MOSIPID2_SPRING_CONFIG_LABEL: ${{ vars.ESIGNET_MOSIPID2_SPRING_CONFIG_LABEL }}
+      # Cluster access secrets
+      KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG }}
+      CLUSTER_WIREGUARD_WG0: ${{ secrets.CLUSTER_WIREGUARD_WG0 }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Persist workflow inputs as environment variables
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GH_INFRA_PAT }}
+        run: |
+          REPO="${{ github.repository }}"
+          ENVIRONMENT="${{ github.ref_name }}"
+          ENCODED_ENVIRONMENT=$(python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=''))" "$ENVIRONMENT")
+          save_var() {
+            local name=$1 value=$2
+            if [ -z "$value" ]; then echo "⏭  Skipping $name — no input provided, existing value preserved"; return; fi
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/environments/$ENCODED_ENVIRONMENT/variables/$name" \
+              -d "{\"name\":\"$name\",\"value\":\"$value\"}")
+            if [ "$STATUS" = "404" ]; then
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/environments/$ENCODED_ENVIRONMENT/variables" \
+                -d "{\"name\":\"$name\",\"value\":\"$value\"}")
+              if [ "$STATUS" = "201" ]; then
+                echo "✓ Created $name"
+              else
+                echo "✗ Failed to create $name (HTTP $STATUS)"; exit 1
+              fi
+            elif [ "$STATUS" = "200" ] || [ "$STATUS" = "204" ]; then
+              echo "✓ Updated $name"
+            else
+              echo "✗ Failed to save $name (HTTP $STATUS)"; exit 1
+            fi
+          }
+          save_var "DOMAIN_NAME"           "${{ github.event.inputs.domain_name }}"
+          save_var "ESIGNET_DB_PORT"       "${{ github.event.inputs.esignet_db_port }}"
+          save_var "MOSIPID1_DOMAIN_NAME"  "${{ github.event.inputs.mosipid1_domain_name }}"
+          save_var "MOSIPID2_DOMAIN_NAME"  "${{ github.event.inputs.mosipid2_domain_name }}"
+          save_var "ENV_NAME"              "${{ github.event.inputs.env_name }}"
+
+      - name: Mask sensitive data
+        run: |
+          # Add masks for secrets to prevent accidental exposure in logs
+          echo "::add-mask::${{ secrets.MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY }}"
+          echo "::add-mask::${{ secrets.MOCK_RELYING_PARTY_JWE_PRIVATE_KEY }}"
+          echo "::add-mask::${{ secrets.KUBECONFIG }}"
+          echo "::add-mask::${{ secrets.CLUSTER_WIREGUARD_WG0 }}"
+          echo "::add-mask::${{ secrets.ESIGNET_CAPTCHA_SITE_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_CAPTCHA_SECRET_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_MOSIPID1_CAPTCHA_SITE_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_MOSIPID1_CAPTCHA_SECRET_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_MOSIPID2_CAPTCHA_SITE_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_MOSIPID2_CAPTCHA_SECRET_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_SUNBIRD_CAPTCHA_SITE_KEY }}"
+          echo "::add-mask::${{ secrets.ESIGNET_SUNBIRD_CAPTCHA_SECRET_KEY }}"
+
+      - name: Setup kubectl and kubeconfig
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
+        run: |
+          # Create directories
+          mkdir -p ${{ github.workspace }}/.local/bin
+          mkdir -p ${{ github.workspace }}/.kube
+          
+          # Install kubectl
+          curl -LO https://dl.k8s.io/release/v1.31.3/bin/linux/amd64/kubectl
+          chmod +x kubectl
+          mv ./kubectl ${{ github.workspace }}/.local/bin/kubectl
+          
+          # Setup kubeconfig
+          echo "$KUBECONFIG_CONTENT" > ${{ github.workspace }}/.kube/config
+          chmod 400 ${{ github.workspace }}/.kube/config
+          
+          # Add kubectl to GitHub PATH for subsequent steps
+          echo "${{ github.workspace }}/.local/bin" >> $GITHUB_PATH
+          
+          # Export environment variables for immediate use
+          echo "KUBECTL_PATH=${{ github.workspace }}/.local/bin/kubectl" >> $GITHUB_ENV
+          
+          # Verify installation
+          ${{ github.workspace }}/.local/bin/kubectl version --client
+          ${{ github.workspace }}/.local/bin/kubectl config view
+
+      - name: Set Default Mode
+        run: |
+          if [ -z "${{ github.event.inputs.mode }}" ]; then
+            echo "HELMSMAN_MODE=apply" >> $GITHUB_ENV
+          else
+            echo "HELMSMAN_MODE=${{ github.event.inputs.mode }}" >> $GITHUB_ENV
+          fi
+
+      - name: Set Profile
+        run: |
+          # Determine profile: from workflow input or detect from changed files on push
+          if [ -n "${{ github.event.inputs.profile }}" ]; then
+            PROFILE="${{ github.event.inputs.profile }}"
+          else
+            # Auto-detect profile from push trigger — extract profile dir name from changed files
+            # Fall back to HEAD~1 if github.event.before is unreachable (e.g. shallow clone)
+            BEFORE="${{ github.event.before }}"
+            SHA="${{ github.sha }}"
+            if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+              BEFORE="HEAD~1"
+            fi
+            CHANGED_FILES=$(git diff --name-only "$BEFORE" "$SHA" -- 'Helmsman/dsf/' 2>/dev/null || \
+                            git diff --name-only HEAD~1 HEAD -- 'Helmsman/dsf/' 2>/dev/null || echo "")
+            PROFILE=$(echo "$CHANGED_FILES" | grep 'esignet-dsf.yaml' | head -1 | sed 's|Helmsman/dsf/\([^/]*\)/.*|\1|')
+            if [[ -z "$PROFILE" ]]; then
+              echo "Error: could not detect profile from changed DSF files."
+              exit 1
+            fi
+          fi
+          echo "PROFILE=$PROFILE" >> "$GITHUB_ENV"
+          echo "Using profile: $PROFILE"
+
+      - name: Setup ufw firewall
+        run: |
+          sudo ufw enable
+          sudo ufw allow ssh
+          sudo ufw allow 51820/udp
+          sudo ufw status  
+
+      - name: Install WireGuard
+        run: sudo apt-get install -y wireguard
+
+      - name: Configure WireGuard
+        run: |
+          echo "${{ secrets.CLUSTER_WIREGUARD_WG0 }}" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+
+      - name: Start WireGuard
+        run: |
+          sudo chmod 600 /etc/wireguard/wg0.conf
+          sudo chmod 700 /etc/wireguard/
+          sudo chmod 644 /lib/systemd/system/wg-quick@.service
+          sudo systemctl daemon-reload
+          sudo wg-quick up wg0
+          sudo wg show wg0
+
+      - name: Setup Helm
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+          sudo chmod 700 get_helm.sh
+          sudo ./get_helm.sh
+          helm version --client
+
+      - name: Install Helmsman
+        run: |
+          curl -L https://github.com/Praqma/helmsman/releases/download/v3.17.1/helmsman_3.17.1_linux_amd64.tar.gz -o helmsman.tar.gz
+          tar xzf helmsman.tar.gz
+          sudo mv helmsman /usr/local/bin
+          
+          # Verify tools are available
+          echo "Tools verification:"
+          echo "kubectl: $(which kubectl)"
+          echo "helmsman: $(which helmsman)"
+          
+          kubectl version --client
+          helmsman -v       
+
+      - name: Verify cluster access
+        run: |
+          # Verify tools are accessible
+          echo "Verifying tool availability:"
+          echo "kubectl path: $(which kubectl)"
+          echo "KUBECONFIG: $KUBECONFIG"
+          
+          # Test kubectl functionality
+          kubectl version --client
+          kubectl get nodes
+          kubectl cluster-info
+
+      - name: Check if mosip-dsf label is completed
+        if: ${{ github.event.inputs.skip_mosip_dsf_check != 'true' && vars.ESIGNET_STANDALONE_MODE != 'true' && github.event.inputs.profile != 'esignet-standalone' }}
+        run: |
+          STATUS=$(kubectl get namespace default -o jsonpath='{.metadata.labels.mosip-dsf}' 2>/dev/null || echo "")
+          if [[ "$STATUS" != "completed" ]]; then
+            echo "❌ MOSIP DSF not completed. Please run the MOSIP DSF workflow first."
+            echo ""
+            echo "💡 To run eSignet DSF independently (standalone mode):"
+            echo "   - For manual runs: Set 'skip_mosip_dsf_check' to true"
+            echo "   - For push-triggered runs: Set repository variable ESIGNET_STANDALONE_MODE=true"
+            echo "     (Repository → Settings → Secrets and variables → Actions → Variables)"
+            exit 1
+          fi
+          echo "✅ MOSIP DSF is completed. Proceeding with eSignet deployment."
+
+      - name: Standalone mode notice
+        if: ${{ github.event.inputs.skip_mosip_dsf_check == 'true' || vars.ESIGNET_STANDALONE_MODE == 'true' }}
+        run: |
+          echo "⚠️  Running in STANDALONE mode - MOSIP DSF check skipped"
+          echo "    Triggered by: ${{ github.event.inputs.skip_mosip_dsf_check == 'true' && 'workflow input' || 'ESIGNET_STANDALONE_MODE variable' }}"
+          echo "    Make sure all prerequisite namespaces and resources exist!"
+
+      - name: Validate required secrets
+        run: |
+          echo "Validating required secrets are configured..."
+          MISSING_SECRETS=0
+          
+          if [ -z "$MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY" ]; then
+            echo "❌ MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY secret is not configured"
+            MISSING_SECRETS=1
+          else
+            echo "✅ MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY is configured"
+          fi
+          
+          if [ -z "$MOCK_RELYING_PARTY_JWE_PRIVATE_KEY" ]; then
+            echo "❌ MOCK_RELYING_PARTY_JWE_PRIVATE_KEY secret is not configured"
+            MISSING_SECRETS=1
+          else
+            echo "✅ MOCK_RELYING_PARTY_JWE_PRIVATE_KEY is configured"
+          fi
+          
+          if [ -z "$ESIGNET_CAPTCHA_SITE_KEY" ]; then
+            echo "❌ ESIGNET_CAPTCHA_SITE_KEY secret is not configured"
+            MISSING_SECRETS=1
+          else
+            echo "✅ ESIGNET_CAPTCHA_SITE_KEY is configured"
+          fi
+          
+          if [ -z "$ESIGNET_CAPTCHA_SECRET_KEY" ]; then
+            echo "❌ ESIGNET_CAPTCHA_SECRET_KEY secret is not configured"
+            MISSING_SECRETS=1
+          else
+            echo "✅ ESIGNET_CAPTCHA_SECRET_KEY is configured"
+          fi
+          
+          # Per-namespace captcha secrets — only required for esignet standalone profile
+          if [ "$PROFILE" = "esignet-standalone" ]; then
+            echo "--- Validating esignet standalone mosipid1 captcha secrets ---"
+            for var in ESIGNET_MOSIPID1_CAPTCHA_SITE_KEY ESIGNET_MOSIPID1_CAPTCHA_SECRET_KEY \
+                       ESIGNET_SUNBIRD_CAPTCHA_SITE_KEY ESIGNET_SUNBIRD_CAPTCHA_SECRET_KEY; do
+              val="${!var:-}"
+              if [ -z "$val" ]; then
+                echo "❌ $var secret is not configured (required for esignet standalone)"
+                MISSING_SECRETS=1
+              else
+                echo "✅ $var is configured"
+              fi
+            done
+            echo "--- Validating esignet standalone mosipid1 postgres + keycloak secrets ---"
+            for var in MOSIPID1_POSTGRES_PASSWORD MOSIPID1_KEYCLOAK_ADMIN_PASSWORD; do
+              val="${!var:-}"
+              if [ -z "$val" ]; then
+                echo "❌ $var secret is not configured (required for esignet standalone)"
+                MISSING_SECRETS=1
+              else
+                echo "✅ $var is configured"
+              fi
+            done
+            if [ "$MOSIPID2_ENABLED" = "true" ]; then
+              echo "--- Validating mosipid2 captcha + postgres + keycloak secrets ---"
+              for var in ESIGNET_MOSIPID2_CAPTCHA_SITE_KEY ESIGNET_MOSIPID2_CAPTCHA_SECRET_KEY \
+                         MOSIPID2_POSTGRES_PASSWORD MOSIPID2_KEYCLOAK_ADMIN_PASSWORD; do
+                val="${!var:-}"
+                if [ -z "$val" ]; then
+                  echo "❌ $var secret is not configured (required when enable_mosipid2=true)"
+                  MISSING_SECRETS=1
+                else
+                  echo "✅ $var is configured"
+                fi
+              done
+            else
+              echo "ℹ mosipid2 disabled — skipping mosipid2 secret validation"
+            fi
+          fi
+
+          if [ "$MISSING_SECRETS" -eq 1 ]; then
+            echo ""
+            echo "Please configure the missing secrets as ENVIRONMENT secrets:"
+            echo "  Repository → Settings → Environments → ${{ github.ref_name }} → Add secret"
+            echo ""
+            echo "Required environment secrets:"
+            echo "  - KUBECONFIG (base64 encoded kubeconfig file)"
+            echo "  - CLUSTER_WIREGUARD_WG0 (WireGuard config)"
+            echo "  - MOCK_RELYING_PARTY_CLIENT_PRIVATE_KEY (base64 encoded PEM)"
+            echo "  - MOCK_RELYING_PARTY_JWE_PRIVATE_KEY (base64 encoded PEM)"
+            echo "  - ESIGNET_CAPTCHA_SITE_KEY (reCAPTCHA site key - plain text)"
+            echo "  - ESIGNET_CAPTCHA_SECRET_KEY (reCAPTCHA secret key - plain text)"
+            if [ "$PROFILE" = "esignet-standalone" ]; then
+              echo "  - ESIGNET_MOSIPID1_CAPTCHA_SITE_KEY / ESIGNET_MOSIPID1_CAPTCHA_SECRET_KEY"
+              echo "  - ESIGNET_SUNBIRD_CAPTCHA_SITE_KEY / ESIGNET_SUNBIRD_CAPTCHA_SECRET_KEY"
+              echo "  - MOSIPID1_POSTGRES_PASSWORD / MOSIPID1_KEYCLOAK_ADMIN_PASSWORD"
+              if [ "$MOSIPID2_ENABLED" = "true" ]; then
+                echo "  - ESIGNET_MOSIPID2_CAPTCHA_SITE_KEY / ESIGNET_MOSIPID2_CAPTCHA_SECRET_KEY"
+                echo "  - MOSIPID2_POSTGRES_PASSWORD / MOSIPID2_KEYCLOAK_ADMIN_PASSWORD"
+              fi
+            fi
+            exit 1
+          fi
+
+          echo "All required secrets are configured"
+
+      - name: Get DB User Password from postgres namespace
+        id: get-db-password
+        run: |
+          echo "Fetching db-common-secrets from postgres namespace..."
+          
+          # Check if the secret exists
+          if kubectl -n postgres get secret db-common-secrets &>/dev/null; then
+            DB_USER_PASSWORD=$(kubectl -n postgres get secret db-common-secrets -o jsonpath='{.data.db-dbuser-password}' | base64 -d)
+            
+            if [ -n "$DB_USER_PASSWORD" ]; then
+              # Mask the password in logs
+              echo "::add-mask::$DB_USER_PASSWORD"
+              # Export for subsequent steps
+              echo "DB_USER_PASSWORD=$DB_USER_PASSWORD" >> $GITHUB_ENV
+              echo "✅ DB_USER_PASSWORD retrieved successfully"
+            else
+              echo "❌ db-dbuser-password is empty in db-common-secrets"
+              exit 1
+            fi
+          else
+            echo "⚠️ db-common-secrets not found in postgres namespace"
+            echo "This is expected on first deployment - postgres-init will create the secret"
+            # Set empty value - postgres-init will generate a new password
+            echo "DB_USER_PASSWORD=" >> $GITHUB_ENV
+          fi
+
+      - name: Get MinIO root password
+        if: ${{ env.PROFILE == 'esignet-standalone' }}
+        run: |
+          MINIO_ROOT_PASSWORD=$(kubectl -n minio get secret minio -o jsonpath='{.data.root-password}' | base64 -d)
+          if [ -n "$MINIO_ROOT_PASSWORD" ]; then
+            echo "::add-mask::$MINIO_ROOT_PASSWORD"
+            echo "MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD" >> $GITHUB_ENV
+            echo "✅ MINIO_ROOT_PASSWORD retrieved"
+          else
+            echo "❌ root-password is empty in minio/minio secret — deploy external-dsf first"; exit 1
+          fi
+
+      - name: Get Keycloak Client Secrets for esignet-keycloak-init
+        id: get-keycloak-secrets
+        run: |
+          echo "Fetching Keycloak client secrets from keycloak namespace..."
+
+          # Fixed key names — written to GITHUB_ENV so Helmsman can substitute ${VAR} in DSF
+          PMS_CLIENT_SECRET_KEY='mosip_pms_client_secret'
+          MPARTNER_DEFAULT_AUTH_SECRET_KEY='mpartner_default_auth_secret'
+          IDA_CLIENT_SECRET_KEY='mosip_ida_client_secret'
+          DEPLOYMENT_CLIENT_SECRET_KEY='mosip_deployment_client_secret'
+          MPARTNER_DEFAULT_MOBILE_SECRET_KEY='mpartner_default_mobile_secret'
+
+          echo "PMS_CLIENT_SECRET_KEY=$PMS_CLIENT_SECRET_KEY" >> $GITHUB_ENV
+          echo "MPARTNER_DEFAULT_AUTH_SECRET_KEY=$MPARTNER_DEFAULT_AUTH_SECRET_KEY" >> $GITHUB_ENV
+          echo "IDA_CLIENT_SECRET_KEY=$IDA_CLIENT_SECRET_KEY" >> $GITHUB_ENV
+          echo "DEPLOYMENT_CLIENT_SECRET_KEY=$DEPLOYMENT_CLIENT_SECRET_KEY" >> $GITHUB_ENV
+          echo "MPARTNER_DEFAULT_MOBILE_SECRET_KEY=$MPARTNER_DEFAULT_MOBILE_SECRET_KEY" >> $GITHUB_ENV
+
+          fetch_secret() {
+            kubectl -n keycloak get secret keycloak-client-secrets \
+              -o jsonpath="{.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || echo ""
+          }
+
+          # Check if keycloak-client-secrets exists (empty on first deploy — keycloak-init generates them)
+          if kubectl -n keycloak get secret keycloak-client-secrets &>/dev/null; then
+            echo "✅ keycloak-client-secrets found in keycloak namespace"
+
+            PMS_CLIENT_SECRET_VALUE=$(fetch_secret "$PMS_CLIENT_SECRET_KEY")
+            MPARTNER_DEFAULT_AUTH_SECRET_VALUE=$(fetch_secret "$MPARTNER_DEFAULT_AUTH_SECRET_KEY")
+            IDA_CLIENT_SECRET_VALUE=$(fetch_secret "$IDA_CLIENT_SECRET_KEY")
+            DEPLOYMENT_CLIENT_SECRET_VALUE=$(fetch_secret "$DEPLOYMENT_CLIENT_SECRET_KEY")
+            MPARTNER_DEFAULT_MOBILE_SECRET_VALUE=$(fetch_secret "$MPARTNER_DEFAULT_MOBILE_SECRET_KEY")
+
+            # Mask all secret values before writing to GITHUB_ENV
+            for val in "$PMS_CLIENT_SECRET_VALUE" "$MPARTNER_DEFAULT_AUTH_SECRET_VALUE" \
+                       "$IDA_CLIENT_SECRET_VALUE" "$DEPLOYMENT_CLIENT_SECRET_VALUE" \
+                       "$MPARTNER_DEFAULT_MOBILE_SECRET_VALUE"; do
+              [ -n "$val" ] && echo "::add-mask::$val"
+            done
+          else
+            echo "⚠️ keycloak-client-secrets not found — first deploy, keycloak-init will generate secrets"
+            PMS_CLIENT_SECRET_VALUE=""
+            MPARTNER_DEFAULT_AUTH_SECRET_VALUE=""
+            IDA_CLIENT_SECRET_VALUE=""
+            DEPLOYMENT_CLIENT_SECRET_VALUE=""
+            MPARTNER_DEFAULT_MOBILE_SECRET_VALUE=""
+          fi
+
+          echo "PMS_CLIENT_SECRET_VALUE=$PMS_CLIENT_SECRET_VALUE" >> $GITHUB_ENV
+          echo "MPARTNER_DEFAULT_AUTH_SECRET_VALUE=$MPARTNER_DEFAULT_AUTH_SECRET_VALUE" >> $GITHUB_ENV
+          echo "IDA_CLIENT_SECRET_VALUE=$IDA_CLIENT_SECRET_VALUE" >> $GITHUB_ENV
+          echo "DEPLOYMENT_CLIENT_SECRET_VALUE=$DEPLOYMENT_CLIENT_SECRET_VALUE" >> $GITHUB_ENV
+          echo "MPARTNER_DEFAULT_MOBILE_SECRET_VALUE=$MPARTNER_DEFAULT_MOBILE_SECRET_VALUE" >> $GITHUB_ENV
+
+      - name: Show deployment variables
+        run: |
+          echo "domain_name           = $domain_name"
+          echo "mosipid1_domain_name  = $mosipid1_domain_name"
+          echo "mosipid2_domain_name  = $mosipid2_domain_name"
+          echo "env_name              = $env_name"
+
+      - name: Initiate helmsman to apply the DSF configurations
+        run: |
+          export HOME="${{ github.workspace }}"
+          export WORKDIR="$HOME/Helmsman"
+
+          # Conditional cleanup: Delete immutable Jobs only if checkbox is enabled
+          # Kubernetes Jobs cannot be updated, so we must delete them before Helmsman runs on re-deployments
+          DELETE_JOBS="${{ github.event.inputs.delete_existing_jobs }}"
+          if [ "$DELETE_JOBS" = "true" ]; then
+            echo "=============================================="
+            echo "Delete existing jobs option enabled"
+            echo "Running pre-Helmsman cleanup..."
+            echo "=============================================="
+            chmod +x $WORKDIR/hooks/pre-helmsman-cleanup.sh
+            $WORKDIR/hooks/pre-helmsman-cleanup.sh || echo "Cleanup script completed (may have warnings on first run)"
+          else
+            echo "Delete existing jobs option not enabled, skipping cleanup"
+            echo "Note: If you encounter 'Job is invalid: spec.template' errors, re-run with 'Delete existing onboarder jobs' checked"
+          fi
+          
+          # Mock Relying Party secrets are already in env from job-level definition
+          # They are automatically masked by GitHub Actions
+          
+          # DB_USER_PASSWORD is set from previous step (or empty on first deploy)
+          
+          # Verify tools are available
+          echo "Using kubectl: $(which kubectl)"
+          echo "Using kubeconfig: $KUBECONFIG"
+          
+          # For esignet standalone: skip softhsm upgrade if releases already exist.
+          # The softhsm chart regenerates a random PIN on every helm upgrade (randNumeric 8).
+          # If either the softhsm pod or the esignet pod restarts after a PIN rotation,
+          # they read the new PIN but the PVC token has the old one → CKR_PIN_INCORRECT.
+          # Fix: skip softhsm upgrade on re-runs so the PIN in the secret never changes.
+          SKIP_RELEASES_ARG=""
+          if [ "$PROFILE" = "esignet-standalone" ]; then
+            SKIP_RELEASES=""
+            for pair in "esignet-softhsm:esignet-mock" "esignet-softhsm-mosipid1:esignet-mosipid1" "esignet-softhsm-mosipid2:esignet-mosipid2" "esignet-softhsm-sunbird:esignet-sunbird"; do
+              release="${pair%%:*}"
+              ns="${pair##*:}"
+              if helm status "$release" -n "$ns" &>/dev/null; then
+                echo "✓ $release already installed in $ns — skipping upgrade to preserve SoftHSM PIN"
+                SKIP_RELEASES="${SKIP_RELEASES:+$SKIP_RELEASES,}$release"
+                SKIP_RELEASES_ARG="$SKIP_RELEASES_ARG -exclude-target $release"
+              else
+                echo "⬆ $release not found in $ns — will install fresh"
+              fi
+            done
+            if [ -n "$SKIP_RELEASES" ]; then
+              echo "SoftHSM releases skipped: $SKIP_RELEASES"
+            fi
+          fi
+
+          # Run helmsman with the determined mode
+          # --keep-untracked-releases prevents deletion of releases managed by other DSF files (e.g., postgres-init from external-dsf)
+          echo "Using DSF: $WORKDIR/dsf/$PROFILE/esignet-dsf.yaml"
+          helmsman --${HELMSMAN_MODE} --keep-untracked-releases $SKIP_RELEASES_ARG -f $WORKDIR/dsf/$PROFILE/esignet-dsf.yaml
+
+      - name: Label namespace on successful deployment
+        if: success() && env.HELMSMAN_MODE == 'apply'
+        run: |
+          kubectl label namespace default esignet-dsf=completed --overwrite
+          echo "✅ eSignet DSF deployment completed successfully"
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "=================================="
+          echo "eSignet Deployment Summary"
+          echo "=================================="
+          echo "Profile: $PROFILE"
+          echo "Mode: $HELMSMAN_MODE"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "Namespaces created/updated:"
+          kubectl get ns esignet-mock esignet-mosipid1 esignet-mosipid2 esignet-sunbird softhsm keycloak redis postgres 2>/dev/null || echo "Some namespaces may not exist yet"
+          echo ""
+          echo "eSignet pods status:"
+          kubectl get pods -n esignet-mock 2>/dev/null || echo "esignet-mock namespace not ready"
+
+  # ---------------------------------------------------------------------------
+  # Trigger signup workflow after successful esignet standalone deployment.
+  # Only fires when profile == 'esignet-standalone' (not for mosip-platform-1.2.0.x/java21).
+  # ---------------------------------------------------------------------------
+  # workflow-caller:
+  #   runs-on: ubuntu-latest
+  #   needs: [deploy]
+  #   if: |
+  #     success() &&
+  #     (github.event.inputs.profile == 'esignet-standalone' || github.event_name == 'push')
+  #   environment:
+  #     name: ${{ github.ref_name }}
+  #   steps:
+  #     - name: Trigger helmsman signup workflow
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GH_INFRA_PAT }}
+  #       run: |
+  #         DOMAIN="${{ github.event.inputs.domain_name || vars.DOMAIN_NAME }}"
+  #         ENV="${{ github.event.inputs.env_name || vars.ENV_NAME }}"
+  #         MODE="${{ github.event.inputs.mode || 'apply' }}"
+
+  #         echo "Triggering signup workflow for profile=esignet"
+  #         echo "  domain_name = $DOMAIN"
+  #         echo "  env_name    = $ENV"
+  #         echo "  mode        = $MODE"
+
+  #         curl -f -X POST \
+  #           -H "Accept: application/vnd.github+json" \
+  #           -H "Authorization: Bearer $GH_TOKEN" \
+  #           -H "X-GitHub-Api-Version: 2022-11-28" \
+  #           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/helmsman_signup.yml/dispatches" \
+  #           -d "{\"ref\":\"${{ github.ref_name }}\",\"inputs\":{\"mode\":\"$MODE\",\"profile\":\"esignet\",\"domain_name\":\"$DOMAIN\",\"env_name\":\"$ENV\"}}"
+
+  #         echo "✅ Signup workflow triggered successfully"
