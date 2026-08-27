@@ -1,62 +1,152 @@
-# GitHub Actions configuration
+# GitHub automation config
 
 ## `rancher-access-grants.json`
 
-Team → Rancher cluster role catalog used by `rancher-grant-cluster-access.sh apply` after infra deploy.
+**Repo-wide defaults** for Rancher cluster RBAC after `ENABLE_RANCHER_IMPORT=true`.
 
-### Fields
+Layers are **merged by `group` name** (later layers win):
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `group` | Yes | IdP group name (Keycloak), e.g. `DEVOPS`, `QA` |
-| `role` | Yes | Rancher **cluster role template id** — use built-in ids where possible (`cluster-owner`, `cluster-member`, `read-only`) or custom `rt-xxxxx` ids |
-| `enabled` | Yes | `true` to include in default merges; `false` to keep in catalog but skip until enabled via workflow/env |
-| `principal_id` | No | Full group principal; default is built from `RANCHER_GROUP_AUTH_PREFIX` or auto-detect |
-| `fix_misbound_user` | No | When `true`, repair userPrincipalId bindings that should be group bindings (DEVOPS only by default) |
+| Layer | Source | Purpose |
+|-------|--------|---------|
+| 1. Base | `.github/config/rancher-access-grants.json` | Team catalog + default roles |
+| 2. Env patch | `vars.RANCHER_ACCESS_GRANTS` | Per-environment defaults |
+| 3. DEVOPS shortcuts | `vars.RANCHER_DEVOPS_ROLE`, `vars.RANCHER_DEVOPS_ENABLED` | Per-env DEVOPS override |
+| 4. **Workflow UI** | `terraform.yml` inputs (see below) | **Per-run selections — highest priority** |
 
-### Built-in vs custom role template ids
+### Workflow inputs (when you click Run workflow)
 
-Rancher built-in cluster roles use stable ids:
+**DEVOPS is always cluster-owner** for every environment — configured in `rancher-access-grants.json`, not in the Actions UI.
 
-- `cluster-owner`
-- `cluster-member`
-- `read-only`
+| Input | Default | What it does |
+|-------|---------|--------------|
+| `GRANT_GROUP_ACCESS` | ☐ false | When ✅, grant **all teams** in JSON (roles from file; overrides `enabled: false` defaults) |
+| `RANCHER_CLUSTER_OWNER_GROUP_ENABLED` | ☐ false | When ✅, grant **cluster-owner** to the group named below |
+| `RANCHER_CLUSTER_OWNER_GROUP` | (empty) | Group name, e.g. `QA` — overrides JSON role; **DEVOPS stays owner too** |
 
-Custom roles created in Rancher UI get ids like `rt-jdzrj`. These are **per Rancher installation**.
+**DEVOPS + all JSON teams on one run:** check `GRANT_GROUP_ACCESS` (teams use roles from JSON, e.g. `rt-jdzrj`).
 
-### Discover role template ids
+**DEVOPS only:** leave `GRANT_GROUP_ACCESS` unchecked (non-DEVOPS entries stay off even if listed in JSON).
 
-```bash
-export RANCHER_URL="https://rancher.example.com"
-export RANCHER_TOKEN="token-xxxxx:yyyyy"
+**DEVOPS + QA both owners:** check `RANCHER_CLUSTER_OWNER_GROUP_ENABLED`, set `RANCHER_CLUSTER_OWNER_GROUP` = `QA` (with or without `GRANT_GROUP_ACCESS`).
 
-curl -sS \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/roletemplates?limit=1000" \
-  | jq '[.data[] | select(.context == "cluster" or (.links // {}) | has("cluster")) | {id, name, builtin}]'
-```
+**Add a new team:** edit `rancher-access-grants.json` only — no workflow YAML change.
 
-Or: Rancher UI → **Users & Authentication** → **Roles** → **Cluster**.
+### Grant entry fields
 
-### Per-environment overrides
+| Field | Required | Default | Example |
+|-------|----------|---------|---------|
+| `group` | yes | — | `DEVOPS` |
+| `role` | yes | — | `cluster-owner`, `cluster-member` |
+| `enabled` | no | `true` | `false` skips this group for that layer |
+| `principal_id` | no | built from prefix | `keycloak_group://DEVOPS` |
+| `group_auth_prefix` | no | `keycloak_group` | |
+| `fix_misbound_user` | no | `false` | `true` for DEVOPS repair |
 
-Set GitHub **environment variable** `RANCHER_ACCESS_GRANTS` (JSON array patch, merged onto this file):
+### Default file (DEVOPS owner; others off)
 
 ```json
 [
-  { "group": "QA", "role": "rt-jdzrj", "enabled": true }
+  {
+    "group": "DEVOPS",
+    "role": "cluster-owner",
+    "enabled": true,
+    "principal_id": "keycloak_group://DEVOPS",
+    "fix_misbound_user": true
+  },
+  {
+    "group": "QA",
+    "role": "cluster-member",
+    "enabled": false,
+    "principal_id": "keycloak_group://QA"
+  }
 ]
 ```
 
-Other optional environment variables (see `rancher-grant-cluster-access.sh --help`):
+### Per-environment: enable QA only
 
-- `RANCHER_DEVOPS_ROLE`, `RANCHER_DEVOPS_ENABLED`, `RANCHER_DEVOPS_GROUP`
-- `RANCHER_GROUP_AUTH_PREFIX` (e.g. `keycloak_group`)
+**Environment `qajava11` → Variable `RANCHER_ACCESS_GRANTS`:**
 
-Workflow inputs `GRANT_GROUP_ACCESS` and `RANCHER_CLUSTER_OWNER_GROUP_*` apply a runtime patch for non-DEVOPS teams.
+```json
+[
+  { "group": "QA", "enabled": true }
+]
+```
 
-### Safety defaults
+**Result for `qajava11`:** DEVOPS `cluster-owner` + QA `cluster-member`.
 
-- Only entries with `"enabled": true` are applied.
-- Missing `enabled` in patches is treated as **disabled** during merge (explicit enable required).
-- DEVOPS `cluster-owner` stays enabled in the catalog regardless of `GRANT_GROUP_ACCESS`.
+### Per-environment: change DEVOPS role (override base)
+
+**Option A — patch variable:**
+
+```json
+[{ "group": "DEVOPS", "role": "cluster-member" }]
+```
+
+**Option B — shortcut variable (simpler):**
+
+| Variable | Value |
+|----------|-------|
+| `RANCHER_DEVOPS_ROLE` | `cluster-member` |
+
+DEVOPS keeps `principal_id` / `fix_misbound_user` from base file; only `role` changes.
+
+### Per-environment: disable DEVOPS grant entirely
+
+| Variable | Value |
+|----------|-------|
+| `RANCHER_DEVOPS_ENABLED` | `false` |
+
+### Merge rules
+
+- Matching `group` → override fields **replace** base fields (shallow merge).
+- `enabled: false` → group is **not** granted (skipped).
+- New group in env patch only → added to the plan.
+- Omitted `enabled` → treated as `true`.
+
+---
+
+## `environment-protection.json`
+
+Default required reviewers for the **Setup environment protection** workflow.
+
+| Field | Description |
+|-------|-------------|
+| `reviewer_teams` | GitHub org team **slugs**, e.g. `["devops"]` |
+| `reviewer_users` | GitHub usernames, e.g. `["alice"]` |
+| `deployment_branches` | Branches allowed to deploy to the environment (empty = all) |
+| `prevent_self_review` | `true` blocks the workflow starter from approving their own run |
+| `wait_timer_minutes` | Optional delay before reviewers can approve |
+
+After running **Setup environment protection** for `qajava11`, any job with `environment: qajava11` pauses until a reviewer approves.
+
+---
+
+## testiv branch example
+
+Branch **`testiv`** on `mosip/infra` uses an expanded team catalog:
+
+```json
+[
+  { "group": "DEVOPS", "role": "cluster-owner", "enabled": true, "fix_misbound_user": true },
+  { "group": "QA", "role": "rt-jdzrj", "enabled": false },
+  { "group": "DEV", "role": "rt-jdzrj", "enabled": false },
+  { "group": "PM", "role": "rt-rgcq7", "enabled": false },
+  { "group": "PO", "role": "rt-rgcq7", "enabled": false },
+  { "group": "BA", "role": "rt-rgcq7", "enabled": false },
+  { "group": "TL+ARCHITECT", "role": "rt-rgcq7", "enabled": false },
+  { "group": "AUTOMATION", "role": "rt-89ntg", "enabled": false }
+]
+```
+
+Custom `rt-*` values are Rancher **role template IDs** (not built-in `cluster-member`). DEVOPS is always applied via `--apply-catalog`; other teams require `GRANT_GROUP_ACCESS=true` or per-env `RANCHER_ACCESS_GRANTS` patch.
+
+### Grant troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Timeout listing bindings (curl 28) | Ensure latest `rancher-grant-cluster-access.sh` (binding cache prefetch) |
+| 409 on create | Harmless — binding already exists; script treats as success |
+| Partial grants | Re-run terraform apply (no-op) with `GRANT_GROUP_ACCESS=true` |
+| KUBECONFIG missing after grant fail | Re-run with `GRANT_GROUP_ACCESS=false`, `PUBLISH_KUBECONFIG=true` |
+
+See [agents.md](../../docs/agents.md) for full workflow context.
