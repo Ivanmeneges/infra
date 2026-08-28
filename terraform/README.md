@@ -221,6 +221,8 @@ After successful deployment, access your MOSIP services:
 https://your-domain.mosip.net # MOSIP Landing Page
 https://api.your-domain.mosip.net # API Gateway
 https://admin.your-domain.mosip.net # Admin Console
+https://grafana.your-domain.mosip.net # Grafana (internal, WireGuard)
+https://kibana.your-domain.mosip.net # Kibana (internal, WireGuard)
 
 # Observation Services (from observ-infra)
 https://rancher.your-domain.mosip.net # Rancher UI

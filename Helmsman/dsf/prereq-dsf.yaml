@@ -38,7 +38,7 @@ apps:
 
   rancher-monitoring:
     namespace: cattle-monitoring-system
-    enabled: false
+    enabled: true
     version: 103.1.0+up45.31.1
     chart: mosip/rancher-monitoring
     set:
@@ -50,6 +50,17 @@ apps:
     timeout: 600
     hooks:
       postInstall: "$WORKDIR/hooks/alerting-setup.sh"
+
+  istio-addons-grafana:
+    namespace: cattle-monitoring-system
+    enabled: true
+    version: 0.1.0
+    chart: $WORKDIR/utils/istio-addons/grafana-istio-addons-0.1.0.tgz
+    set:
+      grafanaHost: "grafana.sandbox.xyz.net"
+      installName: "rancher-monitoring-grafana"
+    wait: true
+    priority: -4
 
   elasticsearch:
     namespace: cattle-logging-system
