@@ -214,6 +214,16 @@ apps:
  namespace: cattle-monitoring-system
  enabled: true # Set to false to disable monitoring
  # If disabled, Grafana and Prometheus won't be installed
+
+ # Expose Grafana at grafana.<your-domain> through Istio (same pattern as Kibana)
+ istio-addons-grafana:
+ namespace: cattle-monitoring-system
+ enabled: true
+ version: 0.1.0
+ chart: $WORKDIR/utils/istio-addons/grafana-istio-addons-0.1.0.tgz
+ set:
+ grafanaHost: "grafana.sandbox.xyz.net" # ← Replace sandbox.xyz.net with your domain
+ installName: "rancher-monitoring-grafana"
 ```
 
 #### Logging Configuration (Optional)
@@ -750,8 +760,22 @@ apps:
 3. Check subdomain configuration in Terraform:
  ```hcl
  subdomain_public = ["resident", "prereg", ...]
- subdomain_internal = ["admin", "iam", ...]
+ subdomain_internal = ["admin", "iam", "kibana", "grafana", ...]
  ```
+
+---
+
+### Issue: Grafana returns HTTP 404 (`grafana.<domain>`)
+
+**Symptom**: `https://grafana.your-domain.net/` resolves but Chrome shows "This page can’t be found" / HTTP ERROR 404. Kibana on the same cluster may still work.
+
+**Cause**: Nginx forwards the hostname to Istio, but there is no Istio Gateway/VirtualService for Grafana (unlike Kibana). Istio then returns 404. Grafana will also be missing if `rancher-monitoring` is `enabled: false`.
+
+**Solution**:
+1. Set `rancher-monitoring.enabled: true` in `prereq-dsf.yaml` and use your real Rancher `clusterId`
+2. Deploy `istio-addons-grafana` with `grafanaHost: "grafana.<your-domain>"`
+3. Add `"grafana"` to Terraform `subdomain_internal` so Route 53 creates `grafana.<domain>` → `api-internal.<domain>`
+4. Redeploy prerequisites (Helmsman) and, if DNS was missing, re-apply Terraform infra
 
 ---
 

@@ -60,7 +60,7 @@ enable_rancher_import = false
 rancher_import_url    = "\"kubectl apply -f https://rancher.observation.mosip.net/v3/import/b94jcxqdddb9k9p7rj4kzf4c7xkkqnvrz886wx9pf44btvwjs5bnzt_c-m-flzdgnth.yaml\""
 # DNS Records to map
 subdomain_public   = ["resident", "prereg", "esignet", "healthservices", "signup"]
-subdomain_internal = ["admin", "iam", "activemq", "kafka", "kibana", "postgres", "smtp", "pmp", "minio", "regclient", "compliance"]
+subdomain_internal = ["admin", "iam", "activemq", "kafka", "kibana", "grafana", "postgres", "smtp", "pmp", "minio", "regclient", "compliance"]
 
 # PostgreSQL Configuration (used when second EBS volume is enabled)
 enable_postgresql_setup = true # Enable PostgreSQL setup for main infra
