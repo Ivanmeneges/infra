@@ -19,6 +19,11 @@ on:
         options:
           - dry-run
           - apply
+      delete_existing_jobs:
+        description: "Delete existing keygen/salt Jobs before apply (required when those images change; Job spec.template is immutable)"
+        required: false
+        default: true
+        type: boolean
       domain_name:
         description: "Domain name for this environment (e.g. example.xyz.net)"
         required: false
@@ -239,6 +244,17 @@ jobs:
           # Verify tools are available
           echo "Using kubectl: $(which kubectl)"
           echo "Using kubeconfig: $KUBECONFIG"
+
+          # Kubernetes Jobs cannot be patched. Push-triggered apply always
+          # deletes keygen/salt Jobs so image pin changes can recreate them.
+          DELETE_JOBS="${{ github.event.inputs.delete_existing_jobs }}"
+          if [ "$HELMSMAN_MODE" = "apply" ] && { [ "${{ github.event_name }}" = "push" ] || [ "$DELETE_JOBS" != "false" ]; }; then
+            echo "Deleting immutable keygen/salt Jobs before Helmsman apply"
+            chmod +x "$WORKDIR/hooks/pre-helmsman-mosip-cleanup.sh"
+            "$WORKDIR/hooks/pre-helmsman-mosip-cleanup.sh" || echo "Cleanup completed with warnings"
+          else
+            echo "Skipping Job cleanup (mode=$HELMSMAN_MODE delete_existing_jobs=${DELETE_JOBS:-unset})"
+          fi
 
           # Run helmsman with the determined mode and profile
           echo "Using profile: $PROFILE"
