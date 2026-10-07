@@ -99,14 +99,20 @@ We've created comprehensive beginner-friendly guides to help you succeed:
 
 | Guide                                                                         | What You'll Learn                                                                          | When to Read                                        |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| **[Self-Service Deployment Guide](docs/SELF_SERVICE_DEPLOYMENT_GUIDE.md)** | Automated WireGuard onboard, Terraform, Rancher, Helmsman — branch = GitHub Environment   | QA/dev teams deploying on this branch (e.g. `perfm(issue1919)`) |
+| **[Agents & Workflow Reference](docs/agents.md)**                            | All 18 GitHub Actions workflows — triggers, secrets, troubleshooting                       | Operators and AI agents — quick workflow lookup      |
+| **[Automation Improvements](docs/AUTOMATION_IMPROVEMENTS.md)**               | DevOps approval gates, multi-team Rancher RBAC, WireGuard offboard                         | Platform / DevOps setup                              |
 | **[Glossary](docs/GLOSSARY.md)**                                                                         | Plain-language explanations of all technical terms (AWS, Kubernetes, Terraform, VPN, etc.) | Before you start - understand the terminology            |
 | **[Secret Generation Guide](docs/SECRET_GENERATION_GUIDE.md)**                                           | Step-by-step instructions to generate SSH keys, AWS credentials, GPG passwords, and more   | Before deployment - setup required secrets               |
 | **[Workflow Guide](docs/WORKFLOW_GUIDE.md)**                                                             | Visual walkthrough of GitHub Actions workflows with screenshots and navigation help        | During deployment - run workflows correctly               |
+| **[Terraform Workflow Guide](docs/TERRAFORM_WORKFLOW_GUIDE.md)**                                         | Terraform/Rancher workflow inputs, post-apply steps, grant troubleshooting                 | Before/during `terraform plan / apply`                 |
 | **[DSF Configuration Guide](docs/DSF_CONFIGURATION_GUIDE.md)**                                           | How to configure Helmsman files including clusterid and domain settings                    | Before Helmsman deployment - configure applications       |
 | **[eSignet Standalone Deployment Guide](docs/ESIGNET_STANDALONE_DEPLOYMENT_GUIDE.md)**                   | End-to-end guide for eSignet standalone — Terraform infra provisioning, required AWS/GitHub secrets, tfvars setup, and Helmsman workflow order | eSignet standalone deployment |
 | **[Environment Destruction Guide](docs/ENVIRONMENT_DESTRUCTION_GUIDE.md)**                               | Safe teardown procedures, backup steps, and cost monitoring                                | After deployment - clean up resources                    |
 
 **Complete Documentation Index:** [View All Documentation](docs/README.md)
+
+> **Branch = environment:** On this branch (`perfm(issue1919)`), your GitHub **Environment name matches the branch name**. Run workflows from this branch and configure secrets under **Settings → Environments → `perfm(issue1919)`**. See [docs/agents.md](docs/agents.md) for the full workflow catalog (reference env `testiv` uses the same patterns).
 
 > **Note:** As of now we support AWS based automated deployment. We are looking for community contribution around terraform modules and changes for other cloud service providers.
 
@@ -231,7 +237,7 @@ GH_INFRA_PAT: "github_pat_..."
 # - Actions: Read and write
 # - Environments: Read and write
 # - Variables: Read and write
-# NOTE: No Secrets permission needed (intentionally excluded)
+# - Secrets: Read and write (required for gh secret set KUBECONFIG and WireGuard onboard)
 
 # SSH Private Key (must match ssh_key_name in tfvars)
 YOUR_SSH_KEY_NAME: | 
