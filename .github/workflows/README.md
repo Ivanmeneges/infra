@@ -16,7 +16,6 @@ This directory contains GitHub Actions workflows for automated MOSIP deployment:
 |----------|---------|---------|------------------|------------|
 | `terraform.yml` | Deploy/Update Infrastructure | Manual Dispatch | GPG encrypted local | Integrated via Terraform |
 | `terraform-destroy.yml` | Destroy Infrastructure | Manual Dispatch | Uses encrypted state | Handles PostgreSQL cleanup |
-| `wg-onboard.yml` | WireGuard peer allocation + env secrets | Manual Dispatch | Commits `wg-peer-allocation.tsv` | N/A |
 | `helmsman_external.yml` | Deploy Prerequisites & External Dependencies | Manual Dispatch | Uses deployed infra | **Parallel deployment** |
 | `helmsman_mosip.yml` | Deploy MOSIP Services | Manual Dispatch | Uses deployed infra | Uses deployed PostgreSQL |
 | `helmsman_esignet.yml` | Deploy eSignet Stack | Manual/Push | Uses deployed infra | Uses deployed PostgreSQL |
@@ -26,6 +25,7 @@ This directory contains GitHub Actions workflows for automated MOSIP deployment:
 | `wg-onboard.yml` | WireGuard peer allocation + env secrets | Manual (self-hosted) | N/A | N/A |
 | `wg-offboard.yml` | WireGuard revoke + peer reuse | Manual (self-hosted) | N/A | N/A |
 | `setup-environment-protection.yml` | DevOps approval gates per environment | Manual | N/A | N/A |
+| `terraform-destroy.yml` | Destroy Infrastructure | Manual Dispatch | GPG encrypted state | Handles PostgreSQL cleanup |
 | `helmsman_signup.yml` | Deploy Signup stack | Manual / Push | Uses deployed infra | Requires esignet-dsf |
 | `helmsman_*_destroy*.yml` | Undeploy Helmsman layers | Manual | Uses KUBECONFIG | See HELMSMAN_DESTROY_GUIDE.md |
 | `keycloak-rancher-integration.yml` | Keycloak-Rancher SAML | Manual | N/A | One-time SSO setup |
@@ -104,32 +104,6 @@ Requires `GH_INFRA_PAT` with **Secrets: Read and write**.
 3. **Confirm**: Set `TERRAFORM_DESTROY: true`
 4. **PostgreSQL Cleanup**: Automatically handled
 5. **Execute**: Click "Run workflow"
-
-## Rancher cluster import & RBAC (infra workflow)
-
-On **terraform plan / apply** with `TERRAFORM_COMPONENT=infra`:
-
-| Input | Purpose |
-|-------|---------|
-| `ENABLE_RANCHER_IMPORT` | Mint import URL at runtime, post-apply SSH import, optional RBAC |
-| `RANCHER_CLUSTER_NAME` | Rancher cluster name (default: branch/env name) |
-| `GRANT_GROUP_ACCESS` | Enable non-DEVOPS teams from [rancher-access-grants.json](../config/rancher-access-grants.json) |
-| `PUBLISH_KUBECONFIG` | Wait for active cluster + set `KUBECONFIG` env secret (default: true) |
-
-**Secrets** (GitHub environment): `RANCHER_API_URL`, `RANCHER_API_TOKEN`
-
-**Scripts**: See [`.github/scripts/README.md`](../scripts/README.md) and [`.github/config/README.md`](../config/README.md).
-
-**Reliability**: Plan, apply, and kubeconfig steps fail the job on error. Terraform state is committed only after a successful plan. Kubeconfig polling defaults to ~15 minutes.
-
-**Destroy**: `terraform-destroy.yml` disables Rancher import via runtime tfvars so destroy is not blocked by stale profile placeholders.
-
-## WireGuard onboarding (before first terraform run)
-
-1. **Navigate**: Actions → "WireGuard environment onboard/offboard"
-2. **Defaults**: `DRY_RUN=true` — first run previews only
-3. **Real run**: Set `DRY_RUN=false`, provide `ENV_NAME`, `JUMPSERVER_HOST`, `TICKET`
-4. **Requires**: Self-hosted runner, secrets `ACTION_PAT`, `MOSIP_AWS_PEM`
 
 ## PostgreSQL Integration
 
